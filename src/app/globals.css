@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Warm, appetizing color palette */
+    --background: 40 33% 98%;       /* Warm cream */
+    --foreground: 20 20% 15%;       /* Dark brown */
+    --card: 40 33% 96%;
+    --card-foreground: 20 20% 15%;
+    --popover: 40 33% 98%;
+    --popover-foreground: 20 20% 15%;
+    --primary: 24 80% 50%;          /* Warm orange */
+    --primary-foreground: 40 33% 98%;
+    --secondary: 82 30% 45%;        /* Olive green */
+    --secondary-foreground: 40 33% 98%;
+    --muted: 35 25% 91%;
+    --muted-foreground: 20 10% 45%;
+    --accent: 35 60% 90%;           /* Light warm accent */
+    --accent-foreground: 20 20% 15%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 40 33% 98%;
+    --border: 30 15% 85%;
+    --input: 30 15% 85%;
+    --ring: 24 80% 50%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

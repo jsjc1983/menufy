@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Restaurant {
+  id        String   @id @default(cuid())
+  name      String
+  adminPin  String
+  events    Event[]
+  menus     Menu[]
+  createdAt DateTime @default(now())
+}
+
+model Menu {
+  id           String     @id @default(cuid())
+  name         String
+  description  String?
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  restaurantId String
+  courses      Course[]
+  events       Event[]
+  createdAt    DateTime   @default(now())
+}
+
+model Course {
+  id     String @id @default(cuid())
+  name   String
+  order  Int
+  menu   Menu   @relation(fields: [menuId], references: [id])
+  menuId String
+  dishes Dish[]
+}
+
+model Dish {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  allergens   String      @default("[]")
+  course      Course      @relation(fields: [courseId], references: [id])
+  courseId    String
+  selections  Selection[]
+}
+
+model Event {
+  id             String   @id @default(cuid())
+  name           String
+  date           DateTime
+  guestCount     Int
+  shareCode      String   @unique
+  organizerName  String
+  organizerEmail String?
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id])
+  restaurantId   String
+  menu           Menu     @relation(fields: [menuId], references: [id])
+  menuId         String
+  guests         Guest[]
+  status         String   @default("open")
+  createdAt      DateTime @default(now())
+}
+
+model Guest {
+  id           String      @id @default(cuid())
+  name         String
+  allergens    String      @default("[]")
+  allergyNotes String?
+  event        Event       @relation(fields: [eventId], references: [id])
+  eventId      String
+  selections   Selection[]
+  submittedAt  DateTime    @default(now())
+}
+
+model Selection {
+  id      String @id @default(cuid())
+  guest   Guest  @relation(fields: [guestId], references: [id])
+  guestId String
+  dish    Dish   @relation(fields: [dishId], references: [id])
+  dishId  String
+}
