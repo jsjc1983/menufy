@@ -11,6 +11,7 @@ export async function createEvent(data: {
   organizerName: string;
   organizerEmail?: string;
   menuId: string;
+  daysBeforeClose?: number;
 }) {
   if (!data.name || data.name.trim().length === 0) {
     return { error: "El nombre del evento es obligatorio" };
@@ -26,6 +27,16 @@ export async function createEvent(data: {
   }
   if (!data.menuId) {
     return { error: "Debes seleccionar un menú" };
+  }
+
+  // Compute voting deadline
+  let votingDeadline: Date | null = null;
+  if (data.daysBeforeClose && data.daysBeforeClose > 0) {
+    const eventDate = new Date(data.date);
+    votingDeadline = new Date(eventDate);
+    votingDeadline.setDate(eventDate.getDate() - data.daysBeforeClose);
+    // End of that day (23:59:59)
+    votingDeadline.setHours(23, 59, 59, 999);
   }
 
   // Generate unique shareCode
@@ -46,6 +57,7 @@ export async function createEvent(data: {
       organizerEmail: data.organizerEmail?.trim() || null,
       restaurantId: data.restaurantId,
       menuId: data.menuId,
+      votingDeadline,
     },
   });
 

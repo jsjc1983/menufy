@@ -6,6 +6,8 @@ interface DishInput {
   name: string;
   description?: string;
   allergens: string[];
+  isShared?: boolean;
+  sharesFor?: number;
 }
 
 interface CourseInput {
@@ -54,6 +56,8 @@ export async function createMenu(data: {
               name: dish.name.trim(),
               description: dish.description?.trim() || null,
               allergens: JSON.stringify(dish.allergens),
+              isShared: dish.isShared ?? false,
+              sharesFor: dish.isShared && dish.sharesFor ? dish.sharesFor : null,
             })),
           },
         })),
