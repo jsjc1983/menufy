@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { getMenusForRestaurant } from "@/lib/actions/menu";
 import { createEvent } from "@/lib/actions/event";
-import { ArrowLeft, Copy, Check, Link as LinkIcon } from "lucide-react";
+import { ArrowLeft, Copy, Check, Link as LinkIcon, Clock } from "lucide-react";
 import Link from "next/link";
 
 type MenuList = Awaited<ReturnType<typeof getMenusForRestaurant>>;
@@ -37,6 +37,7 @@ export default function NewEventPage() {
   const [organizerName, setOrganizerName] = useState("");
   const [organizerEmail, setOrganizerEmail] = useState("");
   const [menuId, setMenuId] = useState("");
+  const [daysBeforeClose, setDaysBeforeClose] = useState("3");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [createdShareCode, setCreatedShareCode] = useState("");
@@ -85,6 +86,7 @@ export default function NewEventPage() {
       organizerName: organizerName.trim(),
       organizerEmail: organizerEmail.trim() || undefined,
       menuId,
+      daysBeforeClose: daysBeforeClose ? parseInt(daysBeforeClose) : undefined,
     });
 
     if (result.error) {
@@ -98,6 +100,13 @@ export default function NewEventPage() {
     }
     setLoading(false);
   };
+
+  const votingDeadlinePreview = (() => {
+    if (!date || !daysBeforeClose || parseInt(daysBeforeClose) <= 0) return null;
+    const d = new Date(date);
+    d.setDate(d.getDate() - parseInt(daysBeforeClose));
+    return d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+  })();
 
   const shareLink = createdShareCode
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/event/${createdShareCode}`
@@ -205,6 +214,35 @@ export default function NewEventPage() {
                   onChange={(e) => setDate(e.target.value)}
                   required
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="daysBeforeClose">
+                  Días de antelación para cerrar votaciones
+                </Label>
+                <div className="flex items-center gap-3">
+                  <Input
+                    id="daysBeforeClose"
+                    type="number"
+                    min="1"
+                    max="30"
+                    placeholder="Ej: 5"
+                    value={daysBeforeClose}
+                    onChange={(e) => setDaysBeforeClose(e.target.value)}
+                    className="w-28"
+                  />
+                  {votingDeadlinePreview && (
+                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <Clock className="h-4 w-4 shrink-0" />
+                      <span>
+                        Límite: <span className="font-medium text-foreground">{votingDeadlinePreview}</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Los invitados podrán votar hasta ese número de días antes del evento.
+                </p>
               </div>
 
               <div className="space-y-2">

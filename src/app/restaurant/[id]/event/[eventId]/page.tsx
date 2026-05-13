@@ -33,6 +33,7 @@ import {
   ChefHat,
   Copy,
   Check,
+  Clock,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -100,18 +101,26 @@ export default function EventDashboard() {
     for (const course of event.menu.courses) {
       lines.push("");
       lines.push(`  ${course.name.toUpperCase()}`);
-      const dishCounts: Record<string, number> = {};
+      const dishStats: Record<string, { count: number; dish: typeof course.dishes[0] }> = {};
+      for (const dish of course.dishes) {
+        dishStats[dish.name] = { count: 0, dish };
+      }
       for (const guest of event.guests) {
         for (const sel of guest.selections) {
-          if (sel.dish.course?.id === course.id) {
-            dishCounts[sel.dish.name] = (dishCounts[sel.dish.name] || 0) + 1;
+          if (sel.dish.course?.id === course.id && dishStats[sel.dish.name]) {
+            dishStats[sel.dish.name].count += 1;
           }
         }
       }
-      for (const [dishName, count] of Object.entries(dishCounts).sort(
-        (a, b) => b[1] - a[1]
+      for (const [dishName, { count, dish }] of Object.entries(dishStats).sort(
+        (a, b) => b[1].count - a[1].count
       )) {
-        lines.push(`    ${dishName}: ${count}`);
+        if (dish.isShared && dish.sharesFor) {
+          const portions = Math.ceil(count / dish.sharesFor);
+          lines.push(`    ${dishName}: ${count} selecciones → ${portions} raciones (compartir/${dish.sharesFor}p)`);
+        } else {
+          lines.push(`    ${dishName}: ${count}`);
+        }
       }
     }
 
@@ -209,22 +218,27 @@ export default function EventDashboard() {
   }
 
   // Compute dish counts per course
+  type DishStat = { count: number; isShared: boolean; sharesFor: number | null };
   const dishCountsByCourse: Record<
     string,
-    { courseName: string; dishes: Record<string, number> }
+    { courseName: string; dishes: Record<string, DishStat> }
   > = {};
   for (const course of event.menu.courses) {
     dishCountsByCourse[course.id] = { courseName: course.name, dishes: {} };
     for (const dish of course.dishes) {
-      dishCountsByCourse[course.id].dishes[dish.name] = 0;
+      dishCountsByCourse[course.id].dishes[dish.name] = {
+        count: 0,
+        isShared: dish.isShared,
+        sharesFor: dish.sharesFor,
+      };
     }
   }
   for (const guest of event.guests) {
     for (const sel of guest.selections) {
       const courseId = sel.dish.course?.id;
       if (courseId && dishCountsByCourse[courseId]) {
-        dishCountsByCourse[courseId].dishes[sel.dish.name] =
-          (dishCountsByCourse[courseId].dishes[sel.dish.name] || 0) + 1;
+        const stat = dishCountsByCourse[courseId].dishes[sel.dish.name];
+        if (stat) stat.count += 1;
       }
     }
   }
@@ -290,6 +304,21 @@ export default function EventDashboard() {
               {event.guests.length} / {event.guestCount} respuestas
             </span>
           </div>
+          {event.votingDeadline && (
+            <div className="flex items-center gap-1.5 mt-1 text-sm text-amber-600">
+              <Clock className="h-4 w-4" />
+              <span>
+                Votaciones hasta el{" "}
+                <span className="font-medium">
+                  {new Date(event.votingDeadline).toLocaleDateString("es-ES", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                  })}
+                </span>
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -370,20 +399,46 @@ export default function EventDashboard() {
                       </h3>
                       <div className="space-y-1">
                         {Object.entries(courseData.dishes)
-                          .sort((a, b) => b[1] - a[1])
-                          .map(([dishName, count]) => (
-                            <div
-                              key={dishName}
-                              className="flex items-center justify-between py-2 px-3 rounded-md bg-muted/50"
-                            >
-                              <span className="font-medium">{dishName}</span>
-                              <Badge
-                                variant={count > 0 ? "default" : "outline"}
+                          .sort((a, b) => b[1].count - a[1].count)
+                          .map(([dishName, stat]) => {
+                            const portions =
+                              stat.isShared && stat.sharesFor
+                                ? Math.ceil(stat.count / stat.sharesFor)
+                                : null;
+                            return (
+                              <div
+                                key={dishName}
+                                className="flex items-center justify-between py-2 px-3 rounded-md bg-muted/50"
                               >
-                                {count}
-                              </Badge>
-                            </div>
-                          ))}
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{dishName}</span>
+                                  {stat.isShared && stat.sharesFor && (
+                                    <span className="text-xs text-muted-foreground">
+                                      (compartir/{stat.sharesFor}p)
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {portions !== null ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs text-muted-foreground">
+                                        {stat.count} sel. →
+                                      </span>
+                                      <Badge variant="default">
+                                        {portions} rac.
+                                      </Badge>
+                                    </div>
+                                  ) : (
+                                    <Badge
+                                      variant={stat.count > 0 ? "default" : "outline"}
+                                    >
+                                      {stat.count}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
                       </div>
                     </div>
                   ))}

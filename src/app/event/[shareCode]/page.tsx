@@ -35,6 +35,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Lock,
+  Users,
+  Clock,
 } from "lucide-react";
 
 type EventData = NonNullable<Awaited<ReturnType<typeof getEventByShareCode>>>;
@@ -213,15 +215,20 @@ export default function GuestPage() {
 
   if (!event) return null;
 
-  if (event.status === "closed") {
+  const deadlinePassed =
+    event.votingDeadline && new Date() > new Date(event.votingDeadline);
+
+  if (event.status === "closed" || deadlinePassed) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <Card className="w-full max-w-sm text-center">
           <CardContent className="py-8">
             <Lock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Evento cerrado</h2>
+            <h2 className="text-xl font-semibold mb-2">Votaciones cerradas</h2>
             <p className="text-muted-foreground text-sm">
-              Este evento ya no acepta respuestas.
+              {deadlinePassed && event.votingDeadline
+                ? `El plazo para votar finalizó el ${new Date(event.votingDeadline).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}.`
+                : "Este evento ya no acepta respuestas."}
             </p>
           </CardContent>
         </Card>
@@ -267,6 +274,17 @@ export default function GuestPage() {
             })}
           </div>
           <div className="text-xs">{event.menu.name}</div>
+          {event.votingDeadline && (
+            <div className="flex items-center gap-1 text-xs font-medium text-amber-600 mt-1">
+              <Clock className="h-3.5 w-3.5" />
+              Vota antes del{" "}
+              {new Date(event.votingDeadline).toLocaleDateString("es-ES", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -378,8 +396,14 @@ export default function GuestPage() {
                         className="mt-0.5"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-base">
-                          {dish.name}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-base">{dish.name}</span>
+                          {dish.isShared && dish.sharesFor && (
+                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                              <Users className="h-3 w-3" />
+                              Para compartir ({dish.sharesFor}p)
+                            </span>
+                          )}
                         </div>
                         {dish.description && (
                           <p className="text-sm text-muted-foreground mt-0.5">

@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { EU_ALLERGENS } from "@/lib/allergens";
 import { createMenu } from "@/lib/actions/menu";
-import { Plus, Trash2, ArrowLeft, GripVertical } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, GripVertical, Users, User } from "lucide-react";
 import Link from "next/link";
 
 interface DishForm {
@@ -22,6 +22,8 @@ interface DishForm {
   name: string;
   description: string;
   allergens: string[];
+  isShared: boolean;
+  sharesFor: string;
 }
 
 interface CourseForm {
@@ -46,17 +48,17 @@ export default function NewMenuPage() {
     {
       id: genId(),
       name: "Entrante",
-      dishes: [{ id: genId(), name: "", description: "", allergens: [] }],
+      dishes: [{ id: genId(), name: "", description: "", allergens: [], isShared: false, sharesFor: "" }],
     },
     {
       id: genId(),
       name: "Principal",
-      dishes: [{ id: genId(), name: "", description: "", allergens: [] }],
+      dishes: [{ id: genId(), name: "", description: "", allergens: [], isShared: false, sharesFor: "" }],
     },
     {
       id: genId(),
       name: "Postre",
-      dishes: [{ id: genId(), name: "", description: "", allergens: [] }],
+      dishes: [{ id: genId(), name: "", description: "", allergens: [], isShared: false, sharesFor: "" }],
     },
   ]);
   const [error, setError] = useState("");
@@ -68,7 +70,7 @@ export default function NewMenuPage() {
       {
         id: genId(),
         name: "",
-        dishes: [{ id: genId(), name: "", description: "", allergens: [] }],
+        dishes: [{ id: genId(), name: "", description: "", allergens: [], isShared: false, sharesFor: "" }],
       },
     ]);
   };
@@ -92,7 +94,7 @@ export default function NewMenuPage() {
               ...c,
               dishes: [
                 ...c.dishes,
-                { id: genId(), name: "", description: "", allergens: [] },
+                { id: genId(), name: "", description: "", allergens: [], isShared: false, sharesFor: "" },
               ],
             }
           : c
@@ -120,7 +122,7 @@ export default function NewMenuPage() {
     courseId: string,
     dishId: string,
     field: keyof DishForm,
-    value: string | string[]
+    value: string | string[] | boolean
   ) => {
     setCourses(
       courses.map((c) =>
@@ -201,6 +203,8 @@ export default function NewMenuPage() {
           name: d.name.trim(),
           description: d.description.trim() || undefined,
           allergens: d.allergens,
+          isShared: d.isShared,
+          sharesFor: d.isShared && d.sharesFor ? parseInt(d.sharesFor) : undefined,
         })),
       })),
     });
@@ -329,6 +333,67 @@ export default function NewMenuPage() {
                         )
                       }
                     />
+                    {/* Shared / Individual toggle */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground block">
+                        Tipo de ración:
+                      </Label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateDish(course.id, dish.id, "isShared", false);
+                            updateDish(course.id, dish.id, "sharesFor", "");
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-colors ${
+                            !dish.isShared
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-background border-border text-muted-foreground hover:border-primary/40"
+                          }`}
+                        >
+                          <User className="h-3 w-3" />
+                          Individual
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateDish(course.id, dish.id, "isShared", true)
+                          }
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-colors ${
+                            dish.isShared
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-background border-border text-muted-foreground hover:border-primary/40"
+                          }`}
+                        >
+                          <Users className="h-3 w-3" />
+                          Para compartir
+                        </button>
+                      </div>
+                      {dish.isShared && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <Label className="text-xs text-muted-foreground whitespace-nowrap">
+                            Para cuántas personas:
+                          </Label>
+                          <Input
+                            type="number"
+                            min={2}
+                            max={50}
+                            placeholder="Ej: 4"
+                            value={dish.sharesFor}
+                            onChange={(e) =>
+                              updateDish(
+                                course.id,
+                                dish.id,
+                                "sharesFor",
+                                e.target.value
+                              )
+                            }
+                            className="h-8 w-24 text-sm"
+                          />
+                        </div>
+                      )}
+                    </div>
+
                     <div>
                       <Label className="text-xs text-muted-foreground mb-2 block">
                         Alérgenos que contiene este plato:

@@ -41,6 +41,8 @@ model Dish {
   name        String
   description String?
   allergens   String      @default("[]")
+  isShared    Boolean     @default(false)
+  sharesFor   Int?
   course      Course      @relation(fields: [courseId], references: [id])
   courseId    String
   selections  Selection[]
@@ -60,6 +62,7 @@ model Event {
   menuId         String
   guests         Guest[]
   status         String   @default("open")
+  votingDeadline DateTime?
   createdAt      DateTime @default(now())
 }
 
