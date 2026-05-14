@@ -68,7 +68,11 @@ export default function HomePage() {
               <Input
                 placeholder="Ej: abc123"
                 value={shareCode}
-                onChange={(e) => setShareCode(e.target.value)}
+                onChange={(e) =>
+                  setShareCode(
+                    e.target.value.replace(/[^a-z0-9]/gi, "").slice(0, 6)
+                  )
+                }
                 maxLength={6}
                 className="text-center text-lg tracking-wider"
               />

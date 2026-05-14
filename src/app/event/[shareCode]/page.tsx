@@ -27,7 +27,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { getEventByShareCode } from "@/lib/actions/event";
 import { submitGuestSelection } from "@/lib/actions/guest";
-import { EU_ALLERGENS, getAllergenById } from "@/lib/allergens";
+import {
+  EU_ALLERGENS,
+  getAllergenById,
+  parseAllergenIds,
+} from "@/lib/allergens";
 import {
   UtensilsCrossed,
   Calendar,
@@ -107,7 +111,7 @@ export default function GuestPage() {
       for (const dish of course.dishes) {
         if (dish.id === dishId) {
           dishName = dish.name;
-          dishAllergens = JSON.parse(dish.allergens) as string[];
+          dishAllergens = parseAllergenIds(dish.allergens);
           break;
         }
       }
@@ -370,9 +374,7 @@ export default function GuestPage() {
                 className="space-y-2"
               >
                 {course.dishes.map((dish) => {
-                  const dishAllergens = JSON.parse(
-                    dish.allergens
-                  ) as string[];
+                  const dishAllergens = parseAllergenIds(dish.allergens);
                   const hasConflict = guestAllergens.some((a) =>
                     dishAllergens.includes(a)
                   );

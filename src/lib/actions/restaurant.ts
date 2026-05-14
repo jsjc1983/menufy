@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { verifyRestaurantPinValue } from "@/lib/server-auth";
 
 export async function createRestaurant(data: {
   name: string;
@@ -21,6 +22,11 @@ export async function createRestaurant(data: {
       name: data.name.trim(),
       adminPin: data.adminPin,
     },
+    select: {
+      id: true,
+      name: true,
+      createdAt: true,
+    },
   });
 
   return { restaurant };
@@ -29,6 +35,12 @@ export async function createRestaurant(data: {
 export async function verifyPin(restaurantId: string, pin: string) {
   const restaurant = await prisma.restaurant.findUnique({
     where: { id: restaurantId },
+    select: {
+      id: true,
+      name: true,
+      adminPin: true,
+      createdAt: true,
+    },
   });
 
   if (!restaurant) {
@@ -39,19 +51,64 @@ export async function verifyPin(restaurantId: string, pin: string) {
     return { error: "PIN incorrecto" };
   }
 
-  return { success: true, restaurant };
+  return {
+    success: true,
+    restaurant: {
+      id: restaurant.id,
+      name: restaurant.name,
+      createdAt: restaurant.createdAt,
+    },
+  };
 }
 
-export async function getRestaurant(id: string) {
+export async function getRestaurant(id: string, adminPin?: string) {
+  const isAuthorized = await verifyRestaurantPinValue(id, adminPin);
+  if (!isAuthorized) {
+    return null;
+  }
+
   return prisma.restaurant.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      createdAt: true,
       menus: {
-        include: { courses: { include: { dishes: true }, orderBy: { order: "asc" } } },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          createdAt: true,
+          courses: {
+            select: {
+              id: true,
+              name: true,
+              order: true,
+              dishes: true,
+            },
+            orderBy: { order: "asc" },
+          },
+        },
         orderBy: { createdAt: "desc" },
       },
       events: {
-        include: { menu: true, guests: true },
+        select: {
+          id: true,
+          name: true,
+          date: true,
+          guestCount: true,
+          status: true,
+          createdAt: true,
+          menu: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          guests: {
+            select: { id: true },
+          },
+        },
         orderBy: { createdAt: "desc" },
       },
     },

@@ -23,7 +23,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getEventById, closeEvent } from "@/lib/actions/event";
-import { getAllergenById } from "@/lib/allergens";
+import { verifyPin } from "@/lib/actions/restaurant";
+import { getAllergenById, parseAllergenIds } from "@/lib/allergens";
 import {
   ArrowLeft,
   Download,
@@ -47,20 +48,48 @@ export default function EventDashboard() {
   const [event, setEvent] = useState<EventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [adminPin, setAdminPin] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [actionError, setActionError] = useState("");
 
-  const loadEvent = useCallback(async () => {
-    const data = await getEventById(eventId);
-    if (data) setEvent(data);
+  const loadEvent = useCallback(async (pinValue: string) => {
+    const data = await getEventById(eventId, restaurantId, pinValue);
+    if (data) {
+      setEvent(data);
+    } else {
+      setAuthError("Evento no encontrado o PIN no válido.");
+    }
     setLoading(false);
-  }, [eventId]);
+  }, [eventId, restaurantId]);
 
   useEffect(() => {
-    loadEvent();
-  }, [loadEvent]);
+    const storedPin = sessionStorage.getItem(`pin_${restaurantId}`);
+    if (!storedPin) {
+      setAuthError("Introduce el PIN en el panel del restaurante antes de ver el evento.");
+      setLoading(false);
+      return;
+    }
+
+    verifyPin(restaurantId, storedPin).then((result) => {
+      if (result.success) {
+        setAdminPin(storedPin);
+        loadEvent(storedPin);
+      } else {
+        sessionStorage.removeItem(`pin_${restaurantId}`);
+        setAuthError("Tu sesión ha caducado. Vuelve al panel e introduce el PIN.");
+        setLoading(false);
+      }
+    });
+  }, [restaurantId, loadEvent]);
 
   const handleClose = async () => {
-    await closeEvent(eventId);
-    loadEvent();
+    setActionError("");
+    const result = await closeEvent(eventId, restaurantId, adminPin);
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+    loadEvent(adminPin);
   };
 
   const copyShareLink = async () => {
@@ -130,14 +159,14 @@ export default function EventDashboard() {
     lines.push("ALÉRGENOS");
     lines.push("-".repeat(50));
     const guestsWithAllergens = event.guests.filter((g) => {
-      const allergens = JSON.parse(g.allergens) as string[];
+      const allergens = parseAllergenIds(g.allergens);
       return allergens.length > 0 || g.allergyNotes;
     });
     if (guestsWithAllergens.length === 0) {
       lines.push("  Ningún comensal ha declarado alérgenos.");
     } else {
       for (const guest of guestsWithAllergens) {
-        const allergens = JSON.parse(guest.allergens) as string[];
+        const allergens = parseAllergenIds(guest.allergens);
         const allergenNames = allergens
           .map((a) => getAllergenById(a)?.name || a)
           .join(", ");
@@ -148,7 +177,7 @@ export default function EventDashboard() {
 
         // Check for conflicts
         for (const sel of guest.selections) {
-          const dishAllergens = JSON.parse(sel.dish.allergens) as string[];
+          const dishAllergens = parseAllergenIds(sel.dish.allergens);
           const conflicts = allergens.filter((a) =>
             dishAllergens.includes(a)
           );
@@ -170,7 +199,7 @@ export default function EventDashboard() {
     lines.push("LISTA COMPLETA DE INVITADOS");
     lines.push("-".repeat(50));
     for (const guest of event.guests) {
-      const allergens = JSON.parse(guest.allergens) as string[];
+      const allergens = parseAllergenIds(guest.allergens);
       lines.push("");
       lines.push(`  ${guest.name}`);
       for (const sel of guest.selections) {
@@ -211,8 +240,17 @@ export default function EventDashboard() {
 
   if (!event) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Evento no encontrado</p>
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <Card className="w-full max-w-sm text-center">
+          <CardContent className="py-8">
+            <p className="text-muted-foreground mb-4">
+              {authError || "Evento no encontrado"}
+            </p>
+            <Link href={`/restaurant/${restaurantId}`}>
+              <Button>Ir al panel</Button>
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -250,10 +288,10 @@ export default function EventDashboard() {
     conflicts: string[];
   }[] = [];
   for (const guest of event.guests) {
-    const guestAllergens = JSON.parse(guest.allergens) as string[];
+    const guestAllergens = parseAllergenIds(guest.allergens);
     if (guestAllergens.length === 0) continue;
     for (const sel of guest.selections) {
-      const dishAllergens = JSON.parse(sel.dish.allergens) as string[];
+      const dishAllergens = parseAllergenIds(sel.dish.allergens);
       const conflicts = guestAllergens.filter((a) =>
         dishAllergens.includes(a)
       );
@@ -361,6 +399,12 @@ export default function EventDashboard() {
           )}
         </div>
       </div>
+
+      {actionError && (
+        <p className="text-sm text-destructive font-medium mb-4">
+          {actionError}
+        </p>
+      )}
 
       <Tabs defaultValue="production">
         <TabsList className="w-full md:w-auto">
@@ -489,7 +533,7 @@ export default function EventDashboard() {
             <CardContent>
               {(() => {
                 const guestsWithAllergens = event.guests.filter((g) => {
-                  const allergens = JSON.parse(g.allergens) as string[];
+                  const allergens = parseAllergenIds(g.allergens);
                   return allergens.length > 0 || g.allergyNotes;
                 });
                 if (guestsWithAllergens.length === 0) {
@@ -502,9 +546,7 @@ export default function EventDashboard() {
                 return (
                   <div className="space-y-3">
                     {guestsWithAllergens.map((guest) => {
-                      const allergens = JSON.parse(
-                        guest.allergens
-                      ) as string[];
+                      const allergens = parseAllergenIds(guest.allergens);
                       return (
                         <div
                           key={guest.id}
@@ -584,9 +626,9 @@ export default function EventDashboard() {
                     </thead>
                     <tbody>
                       {event.guests.map((guest) => {
-                        const guestAllergens = JSON.parse(
+                        const guestAllergens = parseAllergenIds(
                           guest.allergens
-                        ) as string[];
+                        );
                         return (
                           <tr key={guest.id} className="border-b last:border-0">
                             <td className="py-2 pr-4 font-medium">

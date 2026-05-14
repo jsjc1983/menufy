@@ -1,6 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { normalizeAllergenIds } from "@/lib/allergens";
+import { verifyRestaurantPinValue } from "@/lib/server-auth";
 
 interface DishInput {
   name: string;
@@ -18,10 +20,19 @@ interface CourseInput {
 
 export async function createMenu(data: {
   restaurantId: string;
+  adminPin?: string;
   name: string;
   description?: string;
   courses: CourseInput[];
 }) {
+  const isAuthorized = await verifyRestaurantPinValue(
+    data.restaurantId,
+    data.adminPin
+  );
+  if (!isAuthorized) {
+    return { error: "No tienes permisos para modificar este restaurante" };
+  }
+
   if (!data.name || data.name.trim().length === 0) {
     return { error: "El nombre del menú es obligatorio" };
   }
@@ -39,6 +50,17 @@ export async function createMenu(data: {
       if (!dish.name || dish.name.trim().length === 0) {
         return { error: `Todos los platos del tiempo "${course.name}" deben tener nombre` };
       }
+      if (
+        dish.isShared &&
+        (!Number.isInteger(dish.sharesFor) ||
+          !dish.sharesFor ||
+          dish.sharesFor < 2 ||
+          dish.sharesFor > 50)
+      ) {
+        return {
+          error: `El plato "${dish.name}" debe indicar para cuántas personas se comparte (2-50)`,
+        };
+      }
     }
   }
 
@@ -55,7 +77,7 @@ export async function createMenu(data: {
             create: course.dishes.map((dish) => ({
               name: dish.name.trim(),
               description: dish.description?.trim() || null,
-              allergens: JSON.stringify(dish.allergens),
+              allergens: JSON.stringify(normalizeAllergenIds(dish.allergens)),
               isShared: dish.isShared ?? false,
               sharesFor: dish.isShared && dish.sharesFor ? dish.sharesFor : null,
             })),
@@ -74,12 +96,29 @@ export async function createMenu(data: {
   return { menu };
 }
 
-export async function getMenusForRestaurant(restaurantId: string) {
+export async function getMenusForRestaurant(
+  restaurantId: string,
+  adminPin?: string
+) {
+  const isAuthorized = await verifyRestaurantPinValue(restaurantId, adminPin);
+  if (!isAuthorized) {
+    return [];
+  }
+
   return prisma.menu.findMany({
     where: { restaurantId },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      createdAt: true,
       courses: {
-        include: { dishes: true },
+        select: {
+          id: true,
+          name: true,
+          order: true,
+          dishes: true,
+        },
         orderBy: { order: "asc" },
       },
     },

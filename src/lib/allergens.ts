@@ -21,8 +21,36 @@ export const EU_ALLERGENS: Allergen[] = [
   { id: "moluscos", name: "Moluscos", emoji: "🦪" },
 ];
 
+const EU_ALLERGEN_IDS = new Set(EU_ALLERGENS.map((allergen) => allergen.id));
+
 export function getAllergenById(id: string): Allergen | undefined {
   return EU_ALLERGENS.find((a) => a.id === id);
+}
+
+export function normalizeAllergenIds(ids: unknown): string[] {
+  if (!Array.isArray(ids)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      ids.filter(
+        (id): id is string => typeof id === "string" && EU_ALLERGEN_IDS.has(id)
+      )
+    )
+  );
+}
+
+export function parseAllergenIds(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return normalizeAllergenIds(JSON.parse(value));
+  } catch {
+    return [];
+  }
 }
 
 export function getAllergenNames(ids: string[]): string[] {

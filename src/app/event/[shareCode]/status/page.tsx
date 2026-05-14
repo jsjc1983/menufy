@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getEventByShareCode } from "@/lib/actions/event";
-import { getAllergenById } from "@/lib/allergens";
+import { getAllergenById, parseAllergenIds } from "@/lib/allergens";
 import {
   UtensilsCrossed,
   Calendar,
@@ -77,7 +77,10 @@ export default function OrganizerStatusPage() {
 
   const respondedCount = event.guests.length;
   const pendingCount = Math.max(0, event.guestCount - respondedCount);
-  const progress = Math.round((respondedCount / event.guestCount) * 100);
+  const progress =
+    event.guestCount > 0
+      ? Math.round((respondedCount / event.guestCount) * 100)
+      : 100;
 
   return (
     <div className="min-h-screen px-4 py-6 max-w-lg mx-auto">
@@ -155,9 +158,7 @@ export default function OrganizerStatusPage() {
           ) : (
             <div className="space-y-3">
               {event.guests.map((guest) => {
-                const guestAllergens = JSON.parse(
-                  guest.allergens
-                ) as string[];
+                const guestAllergens = parseAllergenIds(guest.allergens);
                 return (
                   <div
                     key={guest.id}

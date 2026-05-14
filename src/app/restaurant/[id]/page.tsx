@@ -37,10 +37,13 @@ export default function RestaurantPanel() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const loadRestaurant = useCallback(async () => {
-    const data = await getRestaurant(restaurantId);
+  const loadRestaurant = useCallback(async (pinValue: string) => {
+    const data = await getRestaurant(restaurantId, pinValue);
     if (data) {
       setRestaurant(data);
+    } else {
+      sessionStorage.removeItem(`pin_${restaurantId}`);
+      setAuthenticated(false);
     }
     setLoading(false);
   }, [restaurantId]);
@@ -51,7 +54,7 @@ export default function RestaurantPanel() {
       verifyPin(restaurantId, storedPin).then((result) => {
         if (result.success) {
           setAuthenticated(true);
-          loadRestaurant();
+          loadRestaurant(storedPin);
         } else {
           sessionStorage.removeItem(`pin_${restaurantId}`);
           setLoading(false);
@@ -65,14 +68,16 @@ export default function RestaurantPanel() {
   const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    const result = await verifyPin(restaurantId, pin);
+    const sanitizedPin = pin.trim();
+    const result = await verifyPin(restaurantId, sanitizedPin);
     if (result.error) {
       setError(result.error);
       return;
     }
-    sessionStorage.setItem(`pin_${restaurantId}`, pin);
+    sessionStorage.setItem(`pin_${restaurantId}`, sanitizedPin);
     setAuthenticated(true);
-    loadRestaurant();
+    setLoading(true);
+    loadRestaurant(sanitizedPin);
   };
 
   if (loading) {
