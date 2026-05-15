@@ -222,7 +222,6 @@ export default function NewMenuPage() {
 
     const result = await createMenu({
       restaurantId,
-      adminPin,
       name: menuName.trim(),
       description: menuDescription.trim() || undefined,
       courses: courses.map((c, index) => ({

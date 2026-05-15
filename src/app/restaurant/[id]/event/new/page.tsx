@@ -58,10 +58,7 @@ export default function NewEventPage() {
     verifyPin(restaurantId, storedPin).then(async (result) => {
       if (result.success) {
         setAdminPin(storedPin);
-        const restaurantMenus = await getMenusForRestaurant(
-          restaurantId,
-          storedPin
-        );
+        const restaurantMenus = await getMenusForRestaurant(restaurantId);
         setMenus(restaurantMenus);
       } else {
         sessionStorage.removeItem(`pin_${restaurantId}`);
@@ -109,7 +106,6 @@ export default function NewEventPage() {
 
     const result = await createEvent({
       restaurantId,
-      adminPin,
       name: name.trim(),
       date,
       guestCount: parseInt(guestCount),

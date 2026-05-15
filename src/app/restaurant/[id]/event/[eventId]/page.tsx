@@ -24,7 +24,30 @@ import {
 } from "@/components/ui/alert-dialog";
 import { getEventById, closeEvent } from "@/lib/actions/event";
 import { verifyPin } from "@/lib/actions/restaurant";
-import { getAllergenById, parseAllergenIds } from "@/lib/allergens";
+import {
+  deleteGuest,
+  updateGuestSelection,
+  createGuestManually,
+} from "@/lib/actions/guest";
+import { EU_ALLERGENS, getAllergenById, parseAllergenIds } from "@/lib/allergens";
+import { generateEventSummary, eventSummaryFilename } from "@/lib/export/event-summary";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   ArrowLeft,
   Download,
@@ -35,6 +58,10 @@ import {
   Copy,
   Check,
   Clock,
+  Pencil,
+  Trash2,
+  Plus,
+  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -48,12 +75,14 @@ export default function EventDashboard() {
   const [event, setEvent] = useState<EventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [adminPin, setAdminPin] = useState("");
   const [authError, setAuthError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [guestFormOpen, setGuestFormOpen] = useState(false);
+  const [editingGuest, setEditingGuest] = useState<EventData["guests"][0] | null>(null);
+  const [deletingGuestId, setDeletingGuestId] = useState<string | null>(null);
 
-  const loadEvent = useCallback(async (pinValue: string) => {
-    const data = await getEventById(eventId, restaurantId, pinValue);
+  const loadEvent = useCallback(async () => {
+    const data = await getEventById(eventId, restaurantId);
     if (data) {
       setEvent(data);
     } else {
@@ -72,8 +101,7 @@ export default function EventDashboard() {
 
     verifyPin(restaurantId, storedPin).then((result) => {
       if (result.success) {
-        setAdminPin(storedPin);
-        loadEvent(storedPin);
+        loadEvent();
       } else {
         sessionStorage.removeItem(`pin_${restaurantId}`);
         setAuthError("Tu sesión ha caducado. Vuelve al panel e introduce el PIN.");
@@ -84,12 +112,12 @@ export default function EventDashboard() {
 
   const handleClose = async () => {
     setActionError("");
-    const result = await closeEvent(eventId, restaurantId, adminPin);
+    const result = await closeEvent(eventId, restaurantId);
     if (result.error) {
       setActionError(result.error);
       return;
     }
-    loadEvent(adminPin);
+    loadEvent();
   };
 
   const copyShareLink = async () => {
@@ -100,132 +128,25 @@ export default function EventDashboard() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDeleteGuest = async (guestId: string) => {
+    setActionError("");
+    const result = await deleteGuest(guestId, eventId, restaurantId);
+    if (result.error) {
+      setActionError(result.error);
+    } else {
+      loadEvent();
+    }
+    setDeletingGuestId(null);
+  };
+
   const exportSummary = () => {
     if (!event) return;
-
-    const lines: string[] = [];
-    lines.push("=".repeat(50));
-    lines.push(`MENUFY - RESUMEN DEL EVENTO`);
-    lines.push("=".repeat(50));
-    lines.push("");
-    lines.push(`Evento: ${event.name}`);
-    lines.push(
-      `Fecha: ${new Date(event.date).toLocaleDateString("es-ES", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })}`
-    );
-    lines.push(`Restaurante: ${event.restaurant.name}`);
-    lines.push(`Menú: ${event.menu.name}`);
-    lines.push(`Comensales: ${event.guests.length}/${event.guestCount}`);
-    lines.push(`Organizador: ${event.organizerName}`);
-    lines.push("");
-
-    // Production summary
-    lines.push("-".repeat(50));
-    lines.push("RESUMEN DE PRODUCCIÓN");
-    lines.push("-".repeat(50));
-    for (const course of event.menu.courses) {
-      lines.push("");
-      lines.push(`  ${course.name.toUpperCase()}`);
-      const dishStats: Record<string, { count: number; dish: typeof course.dishes[0] }> = {};
-      for (const dish of course.dishes) {
-        dishStats[dish.name] = { count: 0, dish };
-      }
-      for (const guest of event.guests) {
-        for (const sel of guest.selections) {
-          if (sel.dish.course?.id === course.id && dishStats[sel.dish.name]) {
-            dishStats[sel.dish.name].count += 1;
-          }
-        }
-      }
-      for (const [dishName, { count, dish }] of Object.entries(dishStats).sort(
-        (a, b) => b[1].count - a[1].count
-      )) {
-        if (dish.isShared && dish.sharesFor) {
-          const portions = Math.ceil(count / dish.sharesFor);
-          lines.push(`    ${dishName}: ${count} selecciones → ${portions} raciones (compartir/${dish.sharesFor}p)`);
-        } else {
-          lines.push(`    ${dishName}: ${count}`);
-        }
-      }
-    }
-
-    // Allergens
-    lines.push("");
-    lines.push("-".repeat(50));
-    lines.push("ALÉRGENOS");
-    lines.push("-".repeat(50));
-    const guestsWithAllergens = event.guests.filter((g) => {
-      const allergens = parseAllergenIds(g.allergens);
-      return allergens.length > 0 || g.allergyNotes;
-    });
-    if (guestsWithAllergens.length === 0) {
-      lines.push("  Ningún comensal ha declarado alérgenos.");
-    } else {
-      for (const guest of guestsWithAllergens) {
-        const allergens = parseAllergenIds(guest.allergens);
-        const allergenNames = allergens
-          .map((a) => getAllergenById(a)?.name || a)
-          .join(", ");
-        lines.push("");
-        lines.push(`  ${guest.name}`);
-        if (allergenNames) lines.push(`    Alérgenos: ${allergenNames}`);
-        if (guest.allergyNotes) lines.push(`    Notas: ${guest.allergyNotes}`);
-
-        // Check for conflicts
-        for (const sel of guest.selections) {
-          const dishAllergens = parseAllergenIds(sel.dish.allergens);
-          const conflicts = allergens.filter((a) =>
-            dishAllergens.includes(a)
-          );
-          if (conflicts.length > 0) {
-            const conflictNames = conflicts
-              .map((a) => getAllergenById(a)?.name || a)
-              .join(", ");
-            lines.push(
-              `    ⚠️ ALERTA: Ha elegido "${sel.dish.name}" que contiene: ${conflictNames}`
-            );
-          }
-        }
-      }
-    }
-
-    // Guest list
-    lines.push("");
-    lines.push("-".repeat(50));
-    lines.push("LISTA COMPLETA DE INVITADOS");
-    lines.push("-".repeat(50));
-    for (const guest of event.guests) {
-      const allergens = parseAllergenIds(guest.allergens);
-      lines.push("");
-      lines.push(`  ${guest.name}`);
-      for (const sel of guest.selections) {
-        const courseName = sel.dish.course?.name || "";
-        lines.push(`    ${courseName}: ${sel.dish.name}`);
-      }
-      if (allergens.length > 0) {
-        const allergenNames = allergens
-          .map((a) => getAllergenById(a)?.name || a)
-          .join(", ");
-        lines.push(`    Alérgenos: ${allergenNames}`);
-      }
-      if (guest.allergyNotes) {
-        lines.push(`    Notas: ${guest.allergyNotes}`);
-      }
-    }
-
-    lines.push("");
-    lines.push("=".repeat(50));
-    lines.push(`Generado por Menufy - ${new Date().toLocaleString("es-ES")}`);
-
-    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const content = generateEventSummary(event);
+    const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `menufy-${event.name.replace(/\s+/g, "-").toLowerCase()}.txt`;
+    a.download = eventSummaryFilename(event);
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -305,6 +226,9 @@ export default function EventDashboard() {
     }
   }
 
+  const respondedCount = event.guests.length;
+  const pendingCount = Math.max(0, event.guestCount - respondedCount);
+
   return (
     <div className="min-h-screen px-4 py-8 max-w-5xl mx-auto">
       <Link
@@ -336,11 +260,16 @@ export default function EventDashboard() {
             &middot; {event.menu.name} &middot; Organizador:{" "}
             {event.organizerName}
           </p>
-          <div className="flex items-center gap-2 mt-2">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">
-              {event.guests.length} / {event.guestCount} respuestas
-            </span>
+          <div className="mt-2 space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">
+                {respondedCount} / {event.guestCount} respuestas recibidas
+              </span>
+            </div>
+            <div className="pl-6 text-sm text-muted-foreground">
+              {pendingCount} pendientes
+            </div>
           </div>
           {event.votingDeadline && (
             <div className="flex items-center gap-1.5 mt-1 text-sm text-amber-600">
@@ -414,6 +343,14 @@ export default function EventDashboard() {
             {allergenAlerts.length > 0 && (
               <Badge variant="destructive" className="ml-1.5 h-5 px-1.5">
                 {allergenAlerts.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="pending">
+            Pendientes
+            {pendingCount > 0 && (
+              <Badge variant="secondary" className="ml-1.5 h-5 px-1.5">
+                {pendingCount}
               </Badge>
             )}
           </TabsTrigger>
@@ -588,15 +525,110 @@ export default function EventDashboard() {
           </Card>
         </TabsContent>
 
+        {/* Pending Tab */}
+        <TabsContent value="pending" className="space-y-4 mt-4">
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div className="flex items-baseline justify-around text-center">
+                <div>
+                  <div className="text-4xl font-bold">{respondedCount}</div>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    respuestas recibidas
+                  </div>
+                </div>
+                <div className="text-2xl text-muted-foreground">/</div>
+                <div>
+                  <div className="text-4xl font-bold text-muted-foreground">
+                    {event.guestCount}
+                  </div>
+                  <div className="text-sm text-muted-foreground mt-1">esperados</div>
+                </div>
+              </div>
+              <progress
+                value={respondedCount}
+                max={event.guestCount || 1}
+                className="w-full h-2.5 rounded-full [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"
+              />
+              {pendingCount === 0 ? (
+                <p className="text-sm text-center font-medium text-green-600">
+                  0 pendientes
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center">
+                  {pendingCount} pendientes
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {event.status === "open" && pendingCount > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Recordar a los invitados</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Comparte este enlace con quienes aún no han respondido:
+                </p>
+                <Button onClick={copyShareLink} variant="outline" className="w-full">
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4 mr-1.5" />
+                      Enlace copiado
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4 mr-1.5" />
+                      Copiar enlace de invitación
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {event.guests.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Han respondido</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div>
+                  {event.guests.map((guest) => (
+                    <div
+                      key={guest.id}
+                      className="flex items-center gap-2.5 py-2 border-b last:border-0"
+                    >
+                      <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                      <span className="text-sm font-medium">{guest.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
         {/* Guests Tab */}
         <TabsContent value="guests" className="space-y-4 mt-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-primary" />
-                Lista completa de invitados ({event.guests.length}/
-                {event.guestCount})
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Invitados ({event.guests.length}/{event.guestCount})
+                </CardTitle>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setEditingGuest(null);
+                    setGuestFormOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Añadir
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {event.guests.length === 0 ? (
@@ -622,6 +654,7 @@ export default function EventDashboard() {
                         <th className="text-left py-2 font-medium">
                           Alérgenos
                         </th>
+                        <th className="py-2" aria-label="Acciones"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -660,6 +693,29 @@ export default function EventDashboard() {
                                 <span className="text-muted-foreground">-</span>
                               )}
                             </td>
+                            <td className="py-2 pl-2">
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  onClick={() => {
+                                    setEditingGuest(guest);
+                                    setGuestFormOpen(true);
+                                  }}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                                  onClick={() => setDeletingGuestId(guest.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
@@ -671,6 +727,209 @@ export default function EventDashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog
+        open={!!deletingGuestId}
+        onOpenChange={(open) => { if (!open) setDeletingGuestId(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar invitado?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminarán sus datos y todas sus selecciones. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deletingGuestId && handleDeleteGuest(deletingGuestId)}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <GuestFormDialog
+        open={guestFormOpen}
+        onOpenChange={setGuestFormOpen}
+        guest={editingGuest}
+        event={event}
+        onSaved={loadEvent}
+      />
     </div>
+  );
+}
+
+function GuestFormDialog({
+  open,
+  onOpenChange,
+  guest,
+  event,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  guest: EventData["guests"][0] | null;
+  event: EventData;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [selectedAllergens, setSelectedAllergens] = useState<string[]>([]);
+  const [allergyNotes, setAllergyNotes] = useState("");
+  const [dishSelections, setDishSelections] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setName(guest?.name ?? "");
+    setSelectedAllergens(guest ? parseAllergenIds(guest.allergens) : []);
+    setAllergyNotes(guest?.allergyNotes ?? "");
+    const map: Record<string, string> = {};
+    if (guest) {
+      for (const sel of guest.selections) {
+        const courseId = sel.dish.course?.id;
+        if (courseId) map[courseId] = sel.dish.id;
+      }
+    }
+    setDishSelections(map);
+    setError("");
+    setLoading(false);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleAllergen = (id: string) => {
+    setSelectedAllergens((prev) =>
+      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
+    );
+  };
+
+  const handleSave = async () => {
+    setError("");
+    setLoading(true);
+
+    const selections = event.menu.courses
+      .filter((course) => dishSelections[course.id])
+      .map((course) => ({ dishId: dishSelections[course.id] }));
+
+    const result = guest
+      ? await updateGuestSelection({
+          guestId: guest.id,
+          eventId: event.id,
+          restaurantId: event.restaurant.id,
+          name,
+          allergens: selectedAllergens,
+          allergyNotes: allergyNotes || undefined,
+          selections,
+        })
+      : await createGuestManually({
+          eventId: event.id,
+          restaurantId: event.restaurant.id,
+          name,
+          allergens: selectedAllergens,
+          allergyNotes: allergyNotes || undefined,
+          selections,
+        });
+
+    if (result.error) {
+      setError(result.error);
+      setLoading(false);
+      return;
+    }
+
+    onSaved();
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {guest ? "Editar invitado" : "Añadir invitado"}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="gf-name">Nombre</Label>
+            <Input
+              id="gf-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Nombre del comensal"
+            />
+          </div>
+
+          {event.menu.courses.map((course) => (
+            <div key={course.id} className="space-y-1.5">
+              <Label>{course.name}</Label>
+              <Select
+                value={dishSelections[course.id] ?? ""}
+                onValueChange={(val) =>
+                  setDishSelections((prev) => ({ ...prev, [course.id]: val }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar plato..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {course.dishes.map((dish) => (
+                    <SelectItem key={dish.id} value={dish.id}>
+                      {dish.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+
+          <div className="space-y-1.5">
+            <Label>Alérgenos</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {EU_ALLERGENS.map((allergen) => (
+                <button
+                  key={allergen.id}
+                  type="button"
+                  onClick={() => toggleAllergen(allergen.id)}
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border transition-colors ${
+                    selectedAllergens.includes(allergen.id)
+                      ? "bg-orange-100 border-orange-300 text-orange-800"
+                      : "bg-background border-border text-muted-foreground"
+                  }`}
+                >
+                  {allergen.emoji} {allergen.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="gf-notes">Notas (opcional)</Label>
+            <Textarea
+              id="gf-notes"
+              value={allergyNotes}
+              onChange={(e) => setAllergyNotes(e.target.value)}
+              placeholder="Notas sobre alergias u otras observaciones..."
+              rows={2}
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-destructive font-medium">{error}</p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={loading}>
+            {loading ? "Guardando..." : "Guardar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

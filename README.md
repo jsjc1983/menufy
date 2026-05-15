@@ -1,10 +1,10 @@
-# Menufy
+# Gruppy
 
 Gestión de menús de grupo para restaurantes. Sin registro, sin complicaciones.
 
 ## ¿Qué es?
 
-Menufy permite a restaurantes digitalizar la recogida de pedidos para eventos de grupo (cenas de empresa, celebraciones, banquetes...). El restaurante crea el menú y el evento, comparte un enlace con los comensales, y cada uno elige sus platos desde el móvil. El restaurante ve en tiempo real el resumen de producción con los conteos exactos.
+Gruppy permite a restaurantes digitalizar la recogida de pedidos para eventos de grupo (cenas de empresa, celebraciones, banquetes...). El restaurante crea el menú y el evento, comparte un enlace con los comensales, y cada uno elige sus platos desde el móvil. El restaurante ve en tiempo real el resumen de producción con los conteos exactos.
 
 ## Características
 
@@ -95,3 +95,9 @@ Restaurant
             ├─ allergens[]
             └─ selections[] → dish
 ```
+
+## Deuda técnica
+
+- **Alérgenos** — En el MVP se guardan como JSON serializado en campos `String @default("[]")` (`Dish.allergens` y `Guest.allergens`). Es suficiente para el piloto, pero más adelante conviene normalizarlo a tablas relacionales:
+  - `DishAllergen` para los alérgenos presentes en cada plato.
+  - `GuestAllergen` para las alergias declaradas por cada comensal.

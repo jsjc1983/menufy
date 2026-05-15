@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { normalizeAllergenIds } from "@/lib/allergens";
-import { verifyRestaurantPinValue } from "@/lib/server-auth";
+import { checkRestaurantSession } from "@/lib/server-auth";
 
 interface DishInput {
   name: string;
@@ -20,16 +20,11 @@ interface CourseInput {
 
 export async function createMenu(data: {
   restaurantId: string;
-  adminPin?: string;
   name: string;
   description?: string;
   courses: CourseInput[];
 }) {
-  const isAuthorized = await verifyRestaurantPinValue(
-    data.restaurantId,
-    data.adminPin
-  );
-  if (!isAuthorized) {
+  if (!checkRestaurantSession(data.restaurantId)) {
     return { error: "No tienes permisos para modificar este restaurante" };
   }
 
@@ -96,12 +91,8 @@ export async function createMenu(data: {
   return { menu };
 }
 
-export async function getMenusForRestaurant(
-  restaurantId: string,
-  adminPin?: string
-) {
-  const isAuthorized = await verifyRestaurantPinValue(restaurantId, adminPin);
-  if (!isAuthorized) {
+export async function getMenusForRestaurant(restaurantId: string) {
+  if (!checkRestaurantSession(restaurantId)) {
     return [];
   }
 

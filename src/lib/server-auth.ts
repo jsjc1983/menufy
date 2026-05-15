@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 
 export async function verifyRestaurantPinValue(
@@ -14,4 +15,9 @@ export async function verifyRestaurantPinValue(
   });
 
   return restaurant?.adminPin === pin;
+}
+
+export function checkRestaurantSession(restaurantId: string): boolean {
+  const session = cookies().get("gruppy_restaurant_session");
+  return !!restaurantId && session?.value === restaurantId;
 }

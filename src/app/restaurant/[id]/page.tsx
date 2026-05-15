@@ -37,8 +37,8 @@ export default function RestaurantPanel() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const loadRestaurant = useCallback(async (pinValue: string) => {
-    const data = await getRestaurant(restaurantId, pinValue);
+  const loadRestaurant = useCallback(async () => {
+    const data = await getRestaurant(restaurantId);
     if (data) {
       setRestaurant(data);
     } else {
@@ -54,7 +54,7 @@ export default function RestaurantPanel() {
       verifyPin(restaurantId, storedPin).then((result) => {
         if (result.success) {
           setAuthenticated(true);
-          loadRestaurant(storedPin);
+          loadRestaurant();
         } else {
           sessionStorage.removeItem(`pin_${restaurantId}`);
           setLoading(false);
@@ -77,7 +77,7 @@ export default function RestaurantPanel() {
     sessionStorage.setItem(`pin_${restaurantId}`, sanitizedPin);
     setAuthenticated(true);
     setLoading(true);
-    loadRestaurant(sanitizedPin);
+    loadRestaurant();
   };
 
   if (loading) {
@@ -256,46 +256,57 @@ export default function RestaurantPanel() {
           </Card>
         ) : (
           <div className="grid gap-3">
-            {restaurant.events.map((event) => (
-              <Link
-                key={event.id}
-                href={`/restaurant/${restaurantId}/event/${event.id}`}
-              >
-                <Card className="hover:border-primary/30 transition-colors cursor-pointer">
-                  <CardContent className="py-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-medium">{event.name}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(event.date).toLocaleDateString("es-ES", {
-                            weekday: "long",
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                          })}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Users className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">
-                            {event.guests.length}/{event.guestCount} respuestas
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            &middot; {event.menu.name}
-                          </span>
+            {restaurant.events.map((event) => {
+              const respondedCount = event.guests.length;
+              const pendingCount = Math.max(
+                0,
+                event.guestCount - respondedCount
+              );
+
+              return (
+                <Link
+                  key={event.id}
+                  href={`/restaurant/${restaurantId}/event/${event.id}`}
+                >
+                  <Card className="hover:border-primary/30 transition-colors cursor-pointer">
+                    <CardContent className="py-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="font-medium">{event.name}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(event.date).toLocaleDateString("es-ES", {
+                              weekday: "long",
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                            })}
+                          </p>
+                          <div className="flex items-start gap-2 mt-1">
+                            <Users className="h-3 w-3 text-muted-foreground mt-0.5" />
+                            <div className="text-xs text-muted-foreground">
+                              <div>
+                                {respondedCount} / {event.guestCount} respuestas recibidas
+                              </div>
+                              <div>{pendingCount} pendientes</div>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              &middot; {event.menu.name}
+                            </span>
+                          </div>
                         </div>
+                        <Badge
+                          variant={
+                            event.status === "open" ? "default" : "secondary"
+                          }
+                        >
+                          {event.status === "open" ? "Abierto" : "Cerrado"}
+                        </Badge>
                       </div>
-                      <Badge
-                        variant={
-                          event.status === "open" ? "default" : "secondary"
-                        }
-                      >
-                        {event.status === "open" ? "Abierto" : "Cerrado"}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>

@@ -118,8 +118,8 @@ export default function OrganizerStatusPage() {
               <Users className="h-4 w-4 text-primary" />
               <span className="font-semibold">Respuestas</span>
             </div>
-            <span className="text-2xl font-bold">
-              {respondedCount}/{event.guestCount}
+            <span className="text-lg font-bold">
+              {respondedCount} / {event.guestCount} respuestas recibidas
             </span>
           </div>
           <div className="w-full bg-muted rounded-full h-3">
@@ -129,7 +129,7 @@ export default function OrganizerStatusPage() {
             />
           </div>
           <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-            <span>{respondedCount} respondidas</span>
+            <span>Avance del evento</span>
             <span>{pendingCount} pendientes</span>
           </div>
         </CardContent>

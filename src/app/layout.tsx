@@ -5,9 +5,9 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Menufy - Gestiona menús de grupo sin complicaciones",
+  title: "Gruppy - Gestiona menús de grupo sin complicaciones",
   description:
-    "Menufy permite a restaurantes gestionar menús de grupo para eventos, y a los invitados elegir sus platos y declarar alérgenos sin registrarse.",
+    "Gruppy permite a restaurantes gestionar menús de grupo para eventos, y a los invitados elegir sus platos y declarar alérgenos sin registrarse.",
 };
 
 export default function RootLayout({

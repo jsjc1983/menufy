@@ -67,14 +67,15 @@ model Event {
 }
 
 model Guest {
-  id           String      @id @default(cuid())
-  name         String
-  allergens    String      @default("[]")
-  allergyNotes String?
-  event        Event       @relation(fields: [eventId], references: [id])
-  eventId      String
-  selections   Selection[]
-  submittedAt  DateTime    @default(now())
+  id             String      @id @default(cuid())
+  name           String
+  normalizedName String?
+  allergens      String      @default("[]")
+  allergyNotes   String?
+  event          Event       @relation(fields: [eventId], references: [id])
+  eventId        String
+  selections     Selection[]
+  submittedAt    DateTime    @default(now())
 }
 
 model Selection {

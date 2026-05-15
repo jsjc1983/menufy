@@ -1,7 +1,8 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
-import { verifyRestaurantPinValue } from "@/lib/server-auth";
+import { checkRestaurantSession } from "@/lib/server-auth";
 
 export async function createRestaurant(data: {
   name: string;
@@ -51,6 +52,13 @@ export async function verifyPin(restaurantId: string, pin: string) {
     return { error: "PIN incorrecto" };
   }
 
+  cookies().set("gruppy_restaurant_session", restaurantId, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 8, // 8 horas
+  });
+
   return {
     success: true,
     restaurant: {
@@ -61,9 +69,8 @@ export async function verifyPin(restaurantId: string, pin: string) {
   };
 }
 
-export async function getRestaurant(id: string, adminPin?: string) {
-  const isAuthorized = await verifyRestaurantPinValue(id, adminPin);
-  if (!isAuthorized) {
+export async function getRestaurant(id: string) {
+  if (!checkRestaurantSession(id)) {
     return null;
   }
 

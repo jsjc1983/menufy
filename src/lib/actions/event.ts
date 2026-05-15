@@ -3,11 +3,54 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { generateShareCode } from "@/lib/utils";
-import { verifyRestaurantPinValue } from "@/lib/server-auth";
+import { checkRestaurantSession } from "@/lib/server-auth";
+
+function parseLocalDateInput(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function endOfLocalDay(date: Date): Date {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    23,
+    59,
+    59,
+    999
+  );
+}
+
+function formatSpanishDate(date: Date): string {
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
 
 export async function createEvent(data: {
   restaurantId: string;
-  adminPin?: string;
   name: string;
   date: string;
   guestCount: number;
@@ -16,11 +59,7 @@ export async function createEvent(data: {
   menuId: string;
   daysBeforeClose?: number;
 }) {
-  const isAuthorized = await verifyRestaurantPinValue(
-    data.restaurantId,
-    data.adminPin
-  );
-  if (!isAuthorized) {
+  if (!checkRestaurantSession(data.restaurantId)) {
     return { error: "No tienes permisos para modificar este restaurante" };
   }
 
@@ -30,9 +69,15 @@ export async function createEvent(data: {
   if (!data.date) {
     return { error: "La fecha del evento es obligatoria" };
   }
-  const eventDate = new Date(data.date);
-  if (Number.isNaN(eventDate.getTime())) {
+  const eventDate = parseLocalDateInput(data.date);
+  if (!eventDate) {
     return { error: "La fecha del evento no es válida" };
+  }
+  const today = startOfLocalDay(new Date());
+  if (startOfLocalDay(eventDate) < today) {
+    return {
+      error: `La fecha del evento debe ser hoy o posterior (${formatSpanishDate(today)})`,
+    };
   }
   if (
     !Number.isInteger(data.guestCount) ||
@@ -76,10 +121,19 @@ export async function createEvent(data: {
     ) {
       return { error: "El plazo de cierre debe estar entre 1 y 365 días" };
     }
-    votingDeadline = new Date(eventDate);
-    votingDeadline.setDate(eventDate.getDate() - data.daysBeforeClose);
-    // End of that day (23:59:59)
-    votingDeadline.setHours(23, 59, 59, 999);
+    const deadlineDate = new Date(
+      eventDate.getFullYear(),
+      eventDate.getMonth(),
+      eventDate.getDate() - data.daysBeforeClose
+    );
+    votingDeadline = endOfLocalDay(deadlineDate);
+
+    if (votingDeadline >= eventDate) {
+      return {
+        error:
+          "La fecha límite de votación debe ser anterior a la fecha del evento",
+      };
+    }
   }
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -176,11 +230,9 @@ export async function getEventByShareCode(shareCode: string) {
 
 export async function getEventById(
   eventId: string,
-  restaurantId: string,
-  adminPin?: string
+  restaurantId: string
 ) {
-  const isAuthorized = await verifyRestaurantPinValue(restaurantId, adminPin);
-  if (!isAuthorized) {
+  if (!checkRestaurantSession(restaurantId)) {
     return null;
   }
 
@@ -241,11 +293,9 @@ export async function getEventById(
 
 export async function closeEvent(
   eventId: string,
-  restaurantId: string,
-  adminPin?: string
+  restaurantId: string
 ) {
-  const isAuthorized = await verifyRestaurantPinValue(restaurantId, adminPin);
-  if (!isAuthorized) {
+  if (!checkRestaurantSession(restaurantId)) {
     return { error: "No tienes permisos para cerrar este evento" };
   }
 
