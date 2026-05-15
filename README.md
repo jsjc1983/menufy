@@ -35,7 +35,7 @@ Gruppy permite a restaurantes digitalizar la recogida de pedidos para eventos de
 | Capa | Tecnología |
 |------|-----------|
 | Framework | Next.js 14 (App Router) |
-| Base de datos | SQLite vía Prisma ORM |
+| Base de datos | PostgreSQL vía Prisma ORM |
 | Estilos | Tailwind CSS + shadcn/ui |
 | Lenguaje | TypeScript |
 
@@ -45,14 +45,27 @@ Gruppy permite a restaurantes digitalizar la recogida de pedidos para eventos de
 # Instalar dependencias
 npm install
 
-# Crear la base de datos y generar el cliente Prisma
-npm run db:push
+# Configurar la conexión de base de datos
+cp .env.example .env
+
+# Crear las tablas y generar el cliente Prisma
+npm run db:migrate
 
 # Iniciar el servidor de desarrollo
 npm run dev
 ```
 
 La aplicación estará disponible en `http://localhost:3000`.
+
+`DATABASE_URL` debe apuntar a una base PostgreSQL. Para producción en Vercel, crea una base de datos gestionada (Vercel Postgres, Neon, Supabase, etc.) y añade `DATABASE_URL` en las variables de entorno del proyecto. El despliegue de Vercel ejecuta `npm run db:deploy` antes del build para aplicar las migraciones.
+
+Si necesitas aplicar las migraciones manualmente:
+
+```bash
+npm run db:deploy
+```
+
+No uses SQLite en Vercel para este proyecto: las funciones serverless no tienen un sistema de archivos persistente para escrituras de base de datos.
 
 ### Scripts disponibles
 
@@ -61,6 +74,8 @@ La aplicación estará disponible en `http://localhost:3000`.
 | `npm run dev` | Servidor de desarrollo |
 | `npm run build` | Build de producción |
 | `npm run db:push` | Sincroniza el schema con la base de datos y regenera el cliente |
+| `npm run db:migrate` | Crea/aplica migraciones en desarrollo |
+| `npm run db:deploy` | Aplica migraciones en producción |
 | `npm run db:studio` | Abre Prisma Studio para explorar la base de datos |
 
 ## Flujo de uso
