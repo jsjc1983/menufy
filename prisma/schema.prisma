@@ -25,6 +25,8 @@ model Menu {
   courses      Course[]
   events       Event[]
   createdAt    DateTime   @default(now())
+
+  @@index([restaurantId])
 }
 
 model Course {
@@ -34,6 +36,9 @@ model Course {
   menu   Menu   @relation(fields: [menuId], references: [id])
   menuId String
   dishes Dish[]
+
+  @@unique([menuId, order])
+  @@index([menuId])
 }
 
 model Dish {
@@ -46,6 +51,8 @@ model Dish {
   course      Course      @relation(fields: [courseId], references: [id])
   courseId    String
   selections  Selection[]
+
+  @@index([courseId])
 }
 
 model Event {
@@ -64,6 +71,10 @@ model Event {
   status         String   @default("open")
   votingDeadline DateTime?
   createdAt      DateTime @default(now())
+
+  @@index([restaurantId])
+  @@index([menuId])
+  @@index([date])
 }
 
 model Guest {
@@ -76,12 +87,18 @@ model Guest {
   eventId        String
   selections     Selection[]
   submittedAt    DateTime    @default(now())
+
+  @@unique([eventId, normalizedName])
+  @@index([eventId])
 }
 
 model Selection {
   id      String @id @default(cuid())
-  guest   Guest  @relation(fields: [guestId], references: [id])
+  guest   Guest  @relation(fields: [guestId], references: [id], onDelete: Cascade)
   guestId String
   dish    Dish   @relation(fields: [dishId], references: [id])
   dishId  String
+
+  @@index([guestId])
+  @@index([dishId])
 }
