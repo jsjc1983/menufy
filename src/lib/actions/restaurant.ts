@@ -1,8 +1,13 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
-import { checkRestaurantSession } from "@/lib/server-auth";
+import {
+  checkRestaurantSession,
+  hashPin,
+  needsPinRehash,
+  setRestaurantSession,
+  verifyPinHash,
+} from "@/lib/server-auth";
 
 export async function createRestaurant(data: {
   name: string;
@@ -21,7 +26,7 @@ export async function createRestaurant(data: {
   const restaurant = await prisma.restaurant.create({
     data: {
       name: data.name.trim(),
-      adminPin: data.adminPin,
+      adminPin: hashPin(data.adminPin),
     },
     select: {
       id: true,
@@ -29,6 +34,8 @@ export async function createRestaurant(data: {
       createdAt: true,
     },
   });
+
+  setRestaurantSession(restaurant.id);
 
   return { restaurant };
 }
@@ -48,16 +55,18 @@ export async function verifyPin(restaurantId: string, pin: string) {
     return { error: "Restaurante no encontrado" };
   }
 
-  if (restaurant.adminPin !== pin) {
+  if (!verifyPinHash(pin, restaurant.adminPin)) {
     return { error: "PIN incorrecto" };
   }
 
-  cookies().set("gruppy_restaurant_session", restaurantId, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 8, // 8 horas
-  });
+  if (needsPinRehash(restaurant.adminPin)) {
+    await prisma.restaurant.update({
+      where: { id: restaurant.id },
+      data: { adminPin: hashPin(pin) },
+    });
+  }
+
+  setRestaurantSession(restaurant.id);
 
   return {
     success: true,
