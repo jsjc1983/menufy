@@ -45,19 +45,29 @@ Gruppy permite a restaurantes digitalizar la recogida de pedidos para eventos de
 # Instalar dependencias
 npm install
 
-# Configurar la conexión de base de datos
-cp .env.example .env
-
-# Crear las tablas y generar el cliente Prisma
-npm run db:migrate
-
 # Iniciar el servidor de desarrollo
 npm run dev
 ```
 
 La aplicación estará disponible en `http://localhost:3000`.
 
-`DATABASE_URL` debe apuntar a una base PostgreSQL. Para producción en Vercel, crea una base de datos gestionada (Vercel Postgres, Neon, Supabase, etc.) y añade `DATABASE_URL` en las variables de entorno del proyecto. El despliegue de Vercel ejecuta `npm run db:deploy` antes del build para aplicar las migraciones.
+Si arrancas `npm run dev` sin un `DATABASE_URL` real, el proyecto usará automáticamente la base local SQLite `prisma/dev.db` para que puedas probar la app en localhost.
+
+Para trabajar contra PostgreSQL:
+
+```bash
+# Configurar la conexión de base de datos PostgreSQL
+cp .env.example .env
+# Edita DATABASE_URL en .env
+
+# Crear las tablas en PostgreSQL y generar el cliente Prisma
+npm run db:migrate
+
+# Iniciar el servidor de desarrollo
+npm run dev
+```
+
+Para producción en Vercel, crea una base de datos gestionada (Vercel Postgres, Neon, Supabase, etc.) y añade `DATABASE_URL` en las variables de entorno del proyecto. El despliegue de Vercel ejecuta `npm run db:deploy` antes del build para aplicar las migraciones.
 
 Si necesitas aplicar las migraciones manualmente:
 
