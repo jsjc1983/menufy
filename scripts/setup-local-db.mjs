@@ -7,6 +7,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const envPath = join(root, ".env");
 const envLocalPath = join(root, ".env.local");
 const localDatabaseUrl = "file:./dev.db";
+const localDatabasePath = join(root, "prisma", "dev.db");
 
 function cleanEnvValue(value) {
   return value?.trim().replace(/^['"]|['"]$/g, "");
@@ -60,7 +61,7 @@ function writeLocalEnv() {
   writeFileSync(envPath, `${current.replace(/\s*$/, "\n")}${localLine}\n`);
 }
 
-function runPrisma(args) {
+function runPrisma(args, exitOnError = true) {
   const executable = process.platform === "win32" ? "npx.cmd" : "npx";
   const result = spawnSync(executable, ["prisma", ...args], {
     cwd: root,
@@ -68,9 +69,10 @@ function runPrisma(args) {
     env: process.env,
   });
 
-  if (result.status !== 0) {
+  if (exitOnError && result.status !== 0) {
     process.exit(result.status ?? 1);
   }
+  return result.status ?? 1;
 }
 
 const configuredDatabaseUrl =
@@ -83,14 +85,20 @@ if (
   isPlaceholderDatabaseUrl(configuredDatabaseUrl)
 ) {
   writeLocalEnv();
+  // Prisma 5 can fail to create a new SQLite file on recent Node/macOS
+  // combinations, so ensure the empty file exists before `db push`.
+  if (!existsSync(localDatabasePath)) writeFileSync(localDatabasePath, "");
   console.log("Using local SQLite database at prisma/dev.db");
-  runPrisma([
+  const pushArgs = [
     "db",
     "push",
     "--schema",
     "prisma/schema.local.prisma",
     "--skip-generate",
-  ]);
+  ];
+  // Prisma 5 may report a transient schema-engine error on the first attempt
+  // immediately after creating a brand-new SQLite file on macOS.
+  if (runPrisma(pushArgs, false) !== 0) runPrisma(pushArgs);
   runPrisma(["generate", "--schema", "prisma/schema.local.prisma"]);
 } else {
   console.log("Using configured PostgreSQL DATABASE_URL");

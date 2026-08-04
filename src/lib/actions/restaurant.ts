@@ -1,13 +1,22 @@
 "use server";
 
-import { cookies } from "next/headers";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
-import { checkRestaurantSession } from "@/lib/server-auth";
+import {
+  checkRestaurantSession,
+  clearRestaurantSession,
+  assertSessionConfigured,
+  setRestaurantSession,
+} from "@/lib/server-auth";
+
+const MAX_PIN_ATTEMPTS = 5;
+const LOCK_MINUTES = 15;
 
 export async function createRestaurant(data: {
   name: string;
   adminPin: string;
 }) {
+  assertSessionConfigured();
   if (!data.name || data.name.trim().length === 0) {
     return { error: "El nombre del restaurante es obligatorio" };
   }
@@ -21,7 +30,7 @@ export async function createRestaurant(data: {
   const restaurant = await prisma.restaurant.create({
     data: {
       name: data.name.trim(),
-      adminPin: data.adminPin,
+      adminPin: await bcrypt.hash(data.adminPin, 12),
     },
     select: {
       id: true,
@@ -30,10 +39,13 @@ export async function createRestaurant(data: {
     },
   });
 
+  await setRestaurantSession(restaurant.id);
+
   return { restaurant };
 }
 
 export async function verifyPin(restaurantId: string, pin: string) {
+  assertSessionConfigured();
   const restaurant = await prisma.restaurant.findUnique({
     where: { id: restaurantId },
     select: {
@@ -41,6 +53,8 @@ export async function verifyPin(restaurantId: string, pin: string) {
       name: true,
       adminPin: true,
       createdAt: true,
+      failedPinAttempts: true,
+      lockedUntil: true,
     },
   });
 
@@ -48,16 +62,44 @@ export async function verifyPin(restaurantId: string, pin: string) {
     return { error: "Restaurante no encontrado" };
   }
 
-  if (restaurant.adminPin !== pin) {
-    return { error: "PIN incorrecto" };
+  const now = new Date();
+  if (restaurant.lockedUntil && restaurant.lockedUntil > now) {
+    return { error: "Acceso bloqueado temporalmente. Inténtalo de nuevo en 15 minutos." };
   }
 
-  cookies().set("gruppy_restaurant_session", restaurantId, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 8, // 8 horas
+  const isHashed = restaurant.adminPin.startsWith("$2");
+  const isValid = isHashed
+    ? await bcrypt.compare(pin, restaurant.adminPin)
+    : restaurant.adminPin === pin;
+
+  if (!isValid) {
+    const attempts = restaurant.failedPinAttempts + 1;
+    const shouldLock = attempts >= MAX_PIN_ATTEMPTS;
+    await prisma.restaurant.update({
+      where: { id: restaurantId },
+      data: {
+        failedPinAttempts: shouldLock ? 0 : attempts,
+        lockedUntil: shouldLock
+          ? new Date(now.getTime() + LOCK_MINUTES * 60 * 1000)
+          : null,
+      },
+    });
+    return {
+      error: shouldLock
+        ? "Demasiados intentos. Acceso bloqueado durante 15 minutos."
+        : `PIN incorrecto. Quedan ${MAX_PIN_ATTEMPTS - attempts} intentos.`,
+    };
+  }
+
+  await prisma.restaurant.update({
+    where: { id: restaurantId },
+    data: {
+      adminPin: isHashed ? undefined : await bcrypt.hash(pin, 12),
+      failedPinAttempts: 0,
+      lockedUntil: null,
+    },
   });
+  await setRestaurantSession(restaurantId);
 
   return {
     success: true,
@@ -70,7 +112,7 @@ export async function verifyPin(restaurantId: string, pin: string) {
 }
 
 export async function getRestaurant(id: string) {
-  if (!checkRestaurantSession(id)) {
+  if (!(await checkRestaurantSession(id))) {
     return null;
   }
 
@@ -120,4 +162,45 @@ export async function getRestaurant(id: string) {
       },
     },
   });
+}
+
+export async function logoutRestaurant() {
+  await clearRestaurantSession();
+  return { success: true };
+}
+
+export async function deleteRestaurant(restaurantId: string, confirmationName: string) {
+  if (!(await checkRestaurantSession(restaurantId))) {
+    return { error: "No autorizado" };
+  }
+  const restaurant = await prisma.restaurant.findUnique({
+    where: { id: restaurantId },
+    select: { id: true, name: true },
+  });
+  if (!restaurant) return { error: "Restaurante no encontrado" };
+  if (confirmationName.trim() !== restaurant.name) {
+    return { error: "El nombre de confirmación no coincide" };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const events = await tx.event.findMany({
+      where: { restaurantId },
+      select: { id: true },
+    });
+    const eventIds = events.map((event) => event.id);
+    const guests = await tx.guest.findMany({
+      where: { eventId: { in: eventIds } },
+      select: { id: true },
+    });
+    const guestIds = guests.map((guest) => guest.id);
+    await tx.selection.deleteMany({ where: { guestId: { in: guestIds } } });
+    await tx.guest.deleteMany({ where: { eventId: { in: eventIds } } });
+    await tx.event.deleteMany({ where: { restaurantId } });
+    await tx.dish.deleteMany({ where: { course: { menu: { restaurantId } } } });
+    await tx.course.deleteMany({ where: { menu: { restaurantId } } });
+    await tx.menu.deleteMany({ where: { restaurantId } });
+    await tx.restaurant.delete({ where: { id: restaurantId } });
+  });
+  await clearRestaurantSession();
+  return { success: true };
 }

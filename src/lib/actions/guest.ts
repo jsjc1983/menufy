@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { normalizeAllergenIds } from "@/lib/allergens";
 import { checkRestaurantSession } from "@/lib/server-auth";
@@ -60,17 +61,6 @@ export async function submitGuestSelection(data: {
   }
 
   const normalizedName = normalizeName(data.name);
-  const duplicate = await prisma.guest.findFirst({
-    where: { eventId: data.eventId, normalizedName },
-    select: { id: true },
-  });
-  if (duplicate) {
-    return {
-      error:
-        "Ya existe una respuesta con ese nombre. Si necesitas cambiarla, habla con el restaurante.",
-    };
-  }
-
   // Validate that selections cover all courses
   const courseCount = event.menu.courses.length;
   if (data.selections.length !== courseCount) {
@@ -104,25 +94,47 @@ export async function submitGuestSelection(data: {
     dishId: selectionsByCourse.get(course.id)!,
   }));
 
-  const guest = await prisma.guest.create({
-    data: {
-      name: data.name.trim(),
-      normalizedName,
-      allergens: JSON.stringify(normalizeAllergenIds(data.allergens)),
-      allergyNotes: data.allergyNotes?.trim() || null,
-      eventId: data.eventId,
-      selections: {
-        create: orderedSelections,
-      },
-    },
-    include: {
-      selections: {
-        include: { dish: true },
-      },
-    },
-  });
+  try {
+    const guest = await prisma.$transaction(
+      async (tx) => {
+        const currentGuests = await tx.guest.count({
+          where: { eventId: data.eventId },
+        });
+        if (currentGuests >= event.guestCount) {
+          throw new Error("EVENT_CAPACITY_REACHED");
+        }
 
-  return { guest };
+        return tx.guest.create({
+          data: {
+            name: data.name.trim(),
+            normalizedName,
+            allergens: JSON.stringify(normalizeAllergenIds(data.allergens)),
+            allergyNotes: data.allergyNotes?.trim() || null,
+            eventId: data.eventId,
+            selections: { create: orderedSelections },
+          },
+          include: { selections: { include: { dish: true } } },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+
+    return { guest };
+  } catch (error) {
+    if (error instanceof Error && error.message === "EVENT_CAPACITY_REACHED") {
+      return { error: "Este evento ya ha alcanzado el número máximo de respuestas." };
+    }
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return {
+        error:
+          "Ya existe una respuesta con ese nombre. Si necesitas cambiarla, habla con el restaurante.",
+      };
+    }
+    throw error;
+  }
 }
 
 export async function deleteGuest(
@@ -130,7 +142,7 @@ export async function deleteGuest(
   eventId: string,
   restaurantId: string
 ) {
-  if (!checkRestaurantSession(restaurantId)) {
+  if (!(await checkRestaurantSession(restaurantId))) {
     return { error: "No autorizado" };
   }
 
@@ -160,7 +172,7 @@ export async function updateGuestSelection(data: {
   allergyNotes?: string;
   selections: { dishId: string }[];
 }) {
-  if (!checkRestaurantSession(data.restaurantId)) {
+  if (!(await checkRestaurantSession(data.restaurantId))) {
     return { error: "No autorizado" };
   }
 
@@ -219,17 +231,26 @@ export async function updateGuestSelection(data: {
     return { error: `Debes seleccionar un plato por cada tiempo (${courses.length} tiempos)` };
   }
 
-  await prisma.selection.deleteMany({ where: { guestId: data.guestId } });
-  await prisma.guest.update({
-    where: { id: data.guestId },
-    data: {
-      name: data.name.trim(),
-      normalizedName: normalizeName(data.name),
-      allergens: JSON.stringify(normalizeAllergenIds(data.allergens)),
-      allergyNotes: data.allergyNotes?.trim() || null,
-      selections: { create: data.selections },
-    },
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.selection.deleteMany({ where: { guestId: data.guestId } });
+      await tx.guest.update({
+        where: { id: data.guestId },
+        data: {
+          name: data.name.trim(),
+          normalizedName: normalizeName(data.name),
+          allergens: JSON.stringify(normalizeAllergenIds(data.allergens)),
+          allergyNotes: data.allergyNotes?.trim() || null,
+          selections: { create: data.selections },
+        },
+      });
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { error: "Ya existe otro invitado con ese nombre en el evento" };
+    }
+    throw error;
+  }
 
   return { success: true };
 }
@@ -242,7 +263,7 @@ export async function createGuestManually(data: {
   allergyNotes?: string;
   selections: { dishId: string }[];
 }) {
-  if (!checkRestaurantSession(data.restaurantId)) {
+  if (!(await checkRestaurantSession(data.restaurantId))) {
     return { error: "No autorizado" };
   }
 
@@ -298,16 +319,22 @@ export async function createGuestManually(data: {
     dishId: selectionsByCourse.get(course.id)!,
   }));
 
-  const guest = await prisma.guest.create({
-    data: {
-      name: data.name.trim(),
-      normalizedName: normalizeName(data.name),
-      allergens: JSON.stringify(normalizeAllergenIds(data.allergens)),
-      allergyNotes: data.allergyNotes?.trim() || null,
-      eventId: data.eventId,
-      selections: { create: orderedSelections },
-    },
-  });
-
-  return { guest };
+  try {
+    const guest = await prisma.guest.create({
+      data: {
+        name: data.name.trim(),
+        normalizedName: normalizeName(data.name),
+        allergens: JSON.stringify(normalizeAllergenIds(data.allergens)),
+        allergyNotes: data.allergyNotes?.trim() || null,
+        eventId: data.eventId,
+        selections: { create: orderedSelections },
+      },
+    });
+    return { guest };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { error: "Ya existe un invitado con ese nombre en el evento" };
+    }
+    throw error;
+  }
 }

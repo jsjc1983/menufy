@@ -60,6 +60,7 @@ export default function GuestPage() {
   );
   const [guestAllergens, setGuestAllergens] = useState<string[]>([]);
   const [allergyNotes, setAllergyNotes] = useState("");
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -90,7 +91,8 @@ export default function GuestPage() {
   }, [shareCode]);
 
   useEffect(() => {
-    loadEvent();
+    const timer = window.setTimeout(loadEvent, 0);
+    return () => window.clearTimeout(timer);
   }, [loadEvent]);
 
   const toggleAllergen = (allergenId: string) => {
@@ -103,6 +105,10 @@ export default function GuestPage() {
 
   const handleDishSelect = (courseId: string, dishId: string) => {
     if (!event) return;
+    if (!privacyAccepted) {
+      setError("Debes aceptar el tratamiento de los datos necesarios para gestionar el evento");
+      return;
+    }
 
     // Find the dish
     let dishName = "";
@@ -251,6 +257,10 @@ export default function GuestPage() {
             </h2>
             <p className="text-muted-foreground">
               Tu selección ha sido registrada.
+            </p>
+            <p className="text-xs text-muted-foreground mt-3">
+              Si necesitas corregirla, contacta con el restaurante e indica el nombre
+              utilizado en la respuesta.
             </p>
           </CardContent>
         </Card>
@@ -444,6 +454,27 @@ export default function GuestPage() {
             </CardContent>
           </Card>
         ))}
+
+        <Card>
+          <CardContent className="pt-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="privacyAccepted"
+                checked={privacyAccepted}
+                onCheckedChange={(value) => setPrivacyAccepted(value === true)}
+              />
+              <Label htmlFor="privacyAccepted" className="text-sm leading-relaxed font-normal">
+                Acepto que el restaurante trate mi nombre, elección y, si los facilito,
+                datos de alergias para gestionar este evento. He leído la{" "}
+                <a href="/privacidad" target="_blank" className="underline">información de privacidad</a>.
+              </Label>
+            </div>
+            <p className="text-xs text-amber-700">
+              Los avisos son una ayuda. Confirma siempre ingredientes, trazas y contaminación
+              cruzada directamente con el restaurante.
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Error */}
         {error && (

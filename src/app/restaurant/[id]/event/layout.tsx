@@ -1,16 +1,16 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { checkRestaurantSession } from "@/lib/server-auth";
 
 export default async function EventLayout({
   children,
   params,
 }: {
   children: React.ReactNode;
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const session = cookies().get("gruppy_restaurant_session");
-  if (session?.value !== params.id) {
-    redirect(`/restaurant/${params.id}`);
+  const { id } = await params;
+  if (!(await checkRestaurantSession(id))) {
+    redirect(`/restaurant/${id}`);
   }
   return <>{children}</>;
 }

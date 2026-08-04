@@ -24,7 +24,7 @@ export async function createMenu(data: {
   description?: string;
   courses: CourseInput[];
 }) {
-  if (!checkRestaurantSession(data.restaurantId)) {
+  if (!(await checkRestaurantSession(data.restaurantId))) {
     return { error: "No tienes permisos para modificar este restaurante" };
   }
 
@@ -92,7 +92,7 @@ export async function createMenu(data: {
 }
 
 export async function getMenusForRestaurant(restaurantId: string) {
-  if (!checkRestaurantSession(restaurantId)) {
+  if (!(await checkRestaurantSession(restaurantId))) {
     return [];
   }
 
@@ -115,4 +115,45 @@ export async function getMenusForRestaurant(restaurantId: string) {
     },
     orderBy: { createdAt: "desc" },
   });
+}
+
+export async function deleteMenu(menuId: string, restaurantId: string) {
+  if (!(await checkRestaurantSession(restaurantId))) {
+    return { error: "No tienes permisos para eliminar este menú" };
+  }
+  const menu = await prisma.menu.findFirst({
+    where: { id: menuId, restaurantId },
+    select: { id: true, events: { select: { id: true } } },
+  });
+  if (!menu) return { error: "Menú no encontrado" };
+  if (menu.events.length > 0) {
+    return { error: "No se puede eliminar un menú utilizado por eventos." };
+  }
+  await prisma.$transaction([
+    prisma.dish.deleteMany({ where: { course: { menuId } } }),
+    prisma.course.deleteMany({ where: { menuId } }),
+    prisma.menu.delete({ where: { id: menuId } }),
+  ]);
+  return { success: true };
+}
+
+export async function updateMenuDetails(
+  menuId: string,
+  restaurantId: string,
+  data: { name: string; description?: string }
+) {
+  if (!(await checkRestaurantSession(restaurantId))) {
+    return { error: "No tienes permisos para editar este menú" };
+  }
+  if (!data.name.trim() || data.name.trim().length > 120) {
+    return { error: "El nombre del menú debe tener entre 1 y 120 caracteres" };
+  }
+  const result = await prisma.menu.updateMany({
+    where: { id: menuId, restaurantId },
+    data: {
+      name: data.name.trim(),
+      description: data.description?.trim() || null,
+    },
+  });
+  return result.count === 1 ? { success: true } : { error: "Menú no encontrado" };
 }

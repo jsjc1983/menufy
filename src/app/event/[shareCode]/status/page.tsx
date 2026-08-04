@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { getEventByShareCode } from "@/lib/actions/event";
+import { getOrganizerEventStatus } from "@/lib/actions/event";
 import { getAllergenById, parseAllergenIds } from "@/lib/allergens";
 import {
   UtensilsCrossed,
@@ -22,28 +22,35 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-type EventData = NonNullable<Awaited<ReturnType<typeof getEventByShareCode>>>;
+type EventData = NonNullable<Awaited<ReturnType<typeof getOrganizerEventStatus>>>;
 
 export default function OrganizerStatusPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const shareCode = params.shareCode as string;
+  const organizerToken = searchParams.get("token") ?? "";
 
   const [event, setEvent] = useState<EventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   const loadEvent = useCallback(async () => {
-    const data = await getEventByShareCode(shareCode);
+    const data = await getOrganizerEventStatus(shareCode, organizerToken);
     if (data) {
       setEvent(data);
     } else {
       setNotFound(true);
     }
     setLoading(false);
-  }, [shareCode]);
+  }, [shareCode, organizerToken]);
 
   useEffect(() => {
-    loadEvent();
+    const initialTimer = window.setTimeout(loadEvent, 0);
+    const timer = window.setInterval(loadEvent, 15_000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
   }, [loadEvent]);
 
   const refresh = () => {
@@ -67,7 +74,7 @@ export default function OrganizerStatusPage() {
             <UtensilsCrossed className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Evento no encontrado</h2>
             <p className="text-muted-foreground text-sm">
-              El código de invitación no es válido.
+              El enlace privado de seguimiento no es válido o ha caducado.
             </p>
           </CardContent>
         </Card>
@@ -136,10 +143,13 @@ export default function OrganizerStatusPage() {
       </Card>
 
       <div className="flex justify-end mb-4">
-        <Button variant="outline" size="sm" onClick={refresh}>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">Actualización automática cada 15 s</span>
+          <Button variant="outline" size="sm" onClick={refresh}>
           <RefreshCw className="h-3.5 w-3.5 mr-1" />
           Actualizar
-        </Button>
+          </Button>
+        </div>
       </div>
 
       {/* Guest List */}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -22,8 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { getEventById, closeEvent } from "@/lib/actions/event";
-import { verifyPin } from "@/lib/actions/restaurant";
+import { getEventById, closeEvent, deleteEvent, reopenEvent, renameEvent } from "@/lib/actions/event";
 import {
   deleteGuest,
   updateGuestSelection,
@@ -69,12 +68,14 @@ type EventData = NonNullable<Awaited<ReturnType<typeof getEventById>>>;
 
 export default function EventDashboard() {
   const params = useParams();
+  const router = useRouter();
   const restaurantId = params.id as string;
   const eventId = params.eventId as string;
 
   const [event, setEvent] = useState<EventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [copiedOrganizer, setCopiedOrganizer] = useState(false);
   const [authError, setAuthError] = useState("");
   const [actionError, setActionError] = useState("");
   const [guestFormOpen, setGuestFormOpen] = useState(false);
@@ -92,22 +93,12 @@ export default function EventDashboard() {
   }, [eventId, restaurantId]);
 
   useEffect(() => {
-    const storedPin = sessionStorage.getItem(`pin_${restaurantId}`);
-    if (!storedPin) {
-      setAuthError("Introduce el PIN en el panel del restaurante antes de ver el evento.");
-      setLoading(false);
-      return;
-    }
-
-    verifyPin(restaurantId, storedPin).then((result) => {
-      if (result.success) {
-        loadEvent();
-      } else {
-        sessionStorage.removeItem(`pin_${restaurantId}`);
-        setAuthError("Tu sesión ha caducado. Vuelve al panel e introduce el PIN.");
-        setLoading(false);
-      }
-    });
+    const initialTimer = window.setTimeout(loadEvent, 0);
+    const timer = window.setInterval(loadEvent, 15_000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
   }, [restaurantId, loadEvent]);
 
   const handleClose = async () => {
@@ -120,12 +111,45 @@ export default function EventDashboard() {
     loadEvent();
   };
 
+  const handleReopen = async () => {
+    setActionError("");
+    const result = await reopenEvent(eventId, restaurantId);
+    if (result.error) setActionError(result.error);
+    else loadEvent();
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!window.confirm("¿Eliminar definitivamente este evento vacío?")) return;
+    setActionError("");
+    const result = await deleteEvent(eventId, restaurantId);
+    if (result.error) setActionError(result.error);
+    else router.push(`/restaurant/${restaurantId}`);
+  };
+
+  const handleRenameEvent = async () => {
+    if (!event) return;
+    const name = window.prompt("Nombre del evento", event.name);
+    if (name === null || name.trim() === event.name) return;
+    setActionError("");
+    const result = await renameEvent(eventId, restaurantId, name);
+    if (result.error) setActionError(result.error);
+    else loadEvent();
+  };
+
   const copyShareLink = async () => {
     if (!event) return;
     const link = `${window.location.origin}/event/${event.shareCode}`;
     await navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyOrganizerLink = async () => {
+    if (!event) return;
+    const link = `${window.location.origin}/event/${event.shareCode}/status?token=${encodeURIComponent(event.organizerToken)}`;
+    await navigator.clipboard.writeText(link);
+    setCopiedOrganizer(true);
+    setTimeout(() => setCopiedOrganizer(false), 2000);
   };
 
   const handleDeleteGuest = async (guestId: string) => {
@@ -289,6 +313,10 @@ export default function EventDashboard() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={handleRenameEvent}>
+            <Pencil className="h-4 w-4 mr-1" />
+            Renombrar
+          </Button>
           <Button variant="outline" size="sm" onClick={copyShareLink}>
             {copied ? (
               <Check className="h-4 w-4 mr-1" />
@@ -296,6 +324,10 @@ export default function EventDashboard() {
               <Copy className="h-4 w-4 mr-1" />
             )}
             {copied ? "Copiado" : "Copiar enlace"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={copyOrganizerLink}>
+            <Copy className="h-4 w-4 mr-1" />
+            {copiedOrganizer ? "Seguimiento copiado" : "Enlace privado de seguimiento"}
           </Button>
           <Button variant="outline" size="sm" onClick={exportSummary}>
             <Download className="h-4 w-4 mr-1" />
@@ -314,7 +346,7 @@ export default function EventDashboard() {
                   <AlertDialogTitle>Cerrar evento</AlertDialogTitle>
                   <AlertDialogDescription>
                     Al cerrar el evento, los invitados ya no podrán enviar
-                    sus respuestas. Esta acción no se puede deshacer.
+                    sus respuestas. Podrás reabrirlo mientras el plazo de votación siga vigente.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -325,6 +357,17 @@ export default function EventDashboard() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+          )}
+          {event.status === "closed" && (
+            <Button variant="outline" size="sm" onClick={handleReopen}>
+              Reabrir evento
+            </Button>
+          )}
+          {event.guests.length === 0 && (
+            <Button variant="ghost" size="sm" onClick={handleDeleteEvent}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Eliminar
+            </Button>
           )}
         </div>
       </div>
@@ -784,6 +827,8 @@ function GuestFormDialog({
 
   useEffect(() => {
     if (!open) return;
+    // This form intentionally resets whenever a different guest is opened.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setName(guest?.name ?? "");
     setSelectedAllergens(guest ? parseAllergenIds(guest.allergens) : []);
     setAllergyNotes(guest?.allergyNotes ?? "");

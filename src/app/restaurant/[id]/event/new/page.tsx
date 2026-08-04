@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/select";
 import { getMenusForRestaurant } from "@/lib/actions/menu";
 import { createEvent } from "@/lib/actions/event";
-import { verifyPin } from "@/lib/actions/restaurant";
 import { ArrowLeft, Copy, Check, Link as LinkIcon, Clock } from "lucide-react";
 import Link from "next/link";
 
@@ -32,9 +31,7 @@ export default function NewEventPage() {
   const restaurantId = params.id as string;
 
   const [menus, setMenus] = useState<MenuList>([]);
-  const [adminPin, setAdminPin] = useState("");
   const [authLoading, setAuthLoading] = useState(true);
-  const [authError, setAuthError] = useState("");
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
   const [guestCount, setGuestCount] = useState("");
@@ -45,25 +42,12 @@ export default function NewEventPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [createdShareCode, setCreatedShareCode] = useState("");
+  const [createdOrganizerToken, setCreatedOrganizerToken] = useState("");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const storedPin = sessionStorage.getItem(`pin_${restaurantId}`);
-    if (!storedPin) {
-      setAuthError("Introduce el PIN en el panel del restaurante antes de crear eventos.");
-      setAuthLoading(false);
-      return;
-    }
-
-    verifyPin(restaurantId, storedPin).then(async (result) => {
-      if (result.success) {
-        setAdminPin(storedPin);
-        const restaurantMenus = await getMenusForRestaurant(restaurantId);
-        setMenus(restaurantMenus);
-      } else {
-        sessionStorage.removeItem(`pin_${restaurantId}`);
-        setAuthError("Tu sesión ha caducado. Vuelve al panel e introduce el PIN.");
-      }
+    getMenusForRestaurant(restaurantId).then((restaurantMenus) => {
+      setMenus(restaurantMenus);
       setAuthLoading(false);
     });
   }, [restaurantId]);
@@ -98,12 +82,6 @@ export default function NewEventPage() {
       setLoading(false);
       return;
     }
-    if (!adminPin) {
-      setError("Vuelve al panel e introduce el PIN antes de crear el evento");
-      setLoading(false);
-      return;
-    }
-
     const result = await createEvent({
       restaurantId,
       name: name.trim(),
@@ -123,6 +101,7 @@ export default function NewEventPage() {
 
     if (result.event) {
       setCreatedShareCode(result.event.shareCode);
+      setCreatedOrganizerToken(result.event.organizerToken);
     }
     setLoading(false);
   };
@@ -137,6 +116,9 @@ export default function NewEventPage() {
   const shareLink = createdShareCode
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/event/${createdShareCode}`
     : "";
+  const organizerLink = createdShareCode && createdOrganizerToken
+    ? `${shareLink}/status?token=${encodeURIComponent(createdOrganizerToken)}`
+    : "";
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(shareLink);
@@ -148,21 +130,6 @@ export default function NewEventPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-muted-foreground">Comprobando acceso...</p>
-      </div>
-    );
-  }
-
-  if (authError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <Card className="w-full max-w-sm text-center">
-          <CardContent className="py-8">
-            <p className="text-muted-foreground mb-4">{authError}</p>
-            <Link href={`/restaurant/${restaurantId}`}>
-              <Button>Ir al panel</Button>
-            </Link>
-          </CardContent>
-        </Card>
       </div>
     );
   }
@@ -202,7 +169,7 @@ export default function NewEventPage() {
                 Enlace del organizador para ver el estado de las respuestas:
               </p>
               <code className="text-xs mt-1 block break-all">
-                {shareLink}/status
+                {organizerLink}
               </code>
             </div>
             <Link href={`/restaurant/${restaurantId}`} className="block">

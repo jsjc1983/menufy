@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/card";
 import { EU_ALLERGENS } from "@/lib/allergens";
 import { createMenu } from "@/lib/actions/menu";
-import { verifyPin } from "@/lib/actions/restaurant";
 import { Plus, Trash2, ArrowLeft, GripVertical, Users, User } from "lucide-react";
 import Link from "next/link";
 
@@ -62,30 +61,8 @@ export default function NewMenuPage() {
       dishes: [{ id: genId(), name: "", description: "", allergens: [], isShared: false, sharesFor: "" }],
     },
   ]);
-  const [adminPin, setAdminPin] = useState("");
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authError, setAuthError] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const storedPin = sessionStorage.getItem(`pin_${restaurantId}`);
-    if (!storedPin) {
-      setAuthError("Introduce el PIN en el panel del restaurante antes de crear menús.");
-      setAuthLoading(false);
-      return;
-    }
-
-    verifyPin(restaurantId, storedPin).then((result) => {
-      if (result.success) {
-        setAdminPin(storedPin);
-      } else {
-        sessionStorage.removeItem(`pin_${restaurantId}`);
-        setAuthError("Tu sesión ha caducado. Vuelve al panel e introduce el PIN.");
-      }
-      setAuthLoading(false);
-    });
-  }, [restaurantId]);
 
   const addCourse = () => {
     setCourses([
@@ -197,12 +174,6 @@ export default function NewMenuPage() {
       setLoading(false);
       return;
     }
-    if (!adminPin) {
-      setError("Vuelve al panel e introduce el PIN antes de guardar el menú");
-      setLoading(false);
-      return;
-    }
-
     for (const course of courses) {
       if (!course.name.trim()) {
         setError("Todos los tiempos deben tener nombre");
@@ -245,29 +216,6 @@ export default function NewMenuPage() {
 
     router.push(`/restaurant/${restaurantId}`);
   };
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Comprobando acceso...</p>
-      </div>
-    );
-  }
-
-  if (authError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <Card className="w-full max-w-sm text-center">
-          <CardContent className="py-8">
-            <p className="text-muted-foreground mb-4">{authError}</p>
-            <Link href={`/restaurant/${restaurantId}`}>
-              <Button>Ir al panel</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen px-4 py-8 max-w-3xl mx-auto">

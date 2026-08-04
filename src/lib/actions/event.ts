@@ -1,9 +1,11 @@
 "use server";
 
 import { Prisma } from "@prisma/client";
+import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { generateShareCode } from "@/lib/utils";
 import { checkRestaurantSession } from "@/lib/server-auth";
+import { organizerEventSelect, publicEventSelect } from "@/lib/event-selects";
 
 function parseLocalDateInput(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -59,7 +61,7 @@ export async function createEvent(data: {
   menuId: string;
   daysBeforeClose?: number;
 }) {
-  if (!checkRestaurantSession(data.restaurantId)) {
+  if (!(await checkRestaurantSession(data.restaurantId))) {
     return { error: "No tienes permisos para modificar este restaurante" };
   }
 
@@ -144,6 +146,7 @@ export async function createEvent(data: {
           date: eventDate,
           guestCount: data.guestCount,
           shareCode: generateShareCode(),
+          organizerToken: randomBytes(24).toString("base64url"),
           organizerName: data.organizerName.trim(),
           organizerEmail: data.organizerEmail?.trim() || null,
           restaurantId: data.restaurantId,
@@ -178,53 +181,25 @@ export async function getEventByShareCode(shareCode: string) {
 
   return prisma.event.findUnique({
     where: { shareCode: normalizedShareCode },
-    select: {
-      id: true,
-      name: true,
-      date: true,
-      guestCount: true,
-      shareCode: true,
-      organizerName: true,
-      status: true,
-      votingDeadline: true,
-      restaurant: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-      menu: {
-        select: {
-          id: true,
-          name: true,
-          courses: {
-            select: {
-              id: true,
-              name: true,
-              order: true,
-              dishes: true,
-            },
-            orderBy: { order: "asc" },
-          },
-        },
-      },
-      guests: {
-        select: {
-          id: true,
-          name: true,
-          allergens: true,
-          allergyNotes: true,
-          submittedAt: true,
-          selections: {
-            select: {
-              id: true,
-              dish: true,
-            },
-          },
-        },
-        orderBy: { submittedAt: "desc" },
-      },
-    },
+    select: publicEventSelect,
+  });
+}
+
+export async function getOrganizerEventStatus(
+  shareCode: string,
+  organizerToken: string
+) {
+  const normalizedShareCode = shareCode.trim().toLowerCase();
+  if (
+    !/^[a-z0-9]{6}$/.test(normalizedShareCode) ||
+    !/^[A-Za-z0-9_-]{24,128}$/.test(organizerToken)
+  ) {
+    return null;
+  }
+
+  return prisma.event.findFirst({
+    where: { shareCode: normalizedShareCode, organizerToken },
+    select: organizerEventSelect,
   });
 }
 
@@ -232,7 +207,7 @@ export async function getEventById(
   eventId: string,
   restaurantId: string
 ) {
-  if (!checkRestaurantSession(restaurantId)) {
+  if (!(await checkRestaurantSession(restaurantId))) {
     return null;
   }
 
@@ -244,6 +219,7 @@ export async function getEventById(
       date: true,
       guestCount: true,
       shareCode: true,
+      organizerToken: true,
       organizerName: true,
       organizerEmail: true,
       status: true,
@@ -295,7 +271,7 @@ export async function closeEvent(
   eventId: string,
   restaurantId: string
 ) {
-  if (!checkRestaurantSession(restaurantId)) {
+  if (!(await checkRestaurantSession(restaurantId))) {
     return { error: "No tienes permisos para cerrar este evento" };
   }
 
@@ -309,4 +285,54 @@ export async function closeEvent(
   }
 
   return { success: true };
+}
+
+export async function reopenEvent(eventId: string, restaurantId: string) {
+  if (!(await checkRestaurantSession(restaurantId))) {
+    return { error: "No tienes permisos para reabrir este evento" };
+  }
+
+  const result = await prisma.event.updateMany({
+    where: { id: eventId, restaurantId },
+    data: { status: "open" },
+  });
+  return result.count === 1
+    ? { success: true }
+    : { error: "Evento no encontrado" };
+}
+
+export async function deleteEvent(eventId: string, restaurantId: string) {
+  if (!(await checkRestaurantSession(restaurantId))) {
+    return { error: "No tienes permisos para eliminar este evento" };
+  }
+
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, restaurantId },
+    select: { id: true, guests: { select: { id: true } } },
+  });
+  if (!event) return { error: "Evento no encontrado" };
+  if (event.guests.length > 0) {
+    return { error: "No se puede eliminar un evento con respuestas; ciérralo para conservar la trazabilidad." };
+  }
+  await prisma.event.delete({ where: { id: eventId } });
+  return { success: true };
+}
+
+export async function renameEvent(
+  eventId: string,
+  restaurantId: string,
+  name: string
+) {
+  if (!(await checkRestaurantSession(restaurantId))) {
+    return { error: "No tienes permisos para editar este evento" };
+  }
+  const cleanName = name.trim();
+  if (!cleanName || cleanName.length > 120) {
+    return { error: "El nombre del evento debe tener entre 1 y 120 caracteres" };
+  }
+  const result = await prisma.event.updateMany({
+    where: { id: eventId, restaurantId },
+    data: { name: cleanName },
+  });
+  return result.count === 1 ? { success: true } : { error: "Evento no encontrado" };
 }

@@ -20,7 +20,8 @@ Gruppy permite a restaurantes digitalizar la recogida de pedidos para eventos de
   - **Invitados** — Tabla completa con las selecciones de cada comensal.
 - **Exportar resumen** — Descarga un `.txt` con toda la información del evento: producción, alérgenos y lista de invitados.
 - **Cerrar evento manualmente** — Cierra las votaciones en cualquier momento.
-- **Acceso por PIN** — El panel del restaurante está protegido por un PIN numérico de hasta 6 dígitos.
+- **Acceso por PIN seguro** — El panel está protegido por PIN con hash, sesión firmada, bloqueo de intentos y cookie segura en producción.
+- **Seguimiento privado** — El organizador recibe un enlace distinto, protegido por token, que se actualiza automáticamente.
 
 ### Para el comensal
 
@@ -34,7 +35,7 @@ Gruppy permite a restaurantes digitalizar la recogida de pedidos para eventos de
 
 | Capa | Tecnología |
 |------|-----------|
-| Framework | Next.js 14 (App Router) |
+| Framework | Next.js 16 (App Router) |
 | Base de datos | PostgreSQL vía Prisma ORM |
 | Estilos | Tailwind CSS + shadcn/ui |
 | Lenguaje | TypeScript |
@@ -69,6 +70,12 @@ npm run dev
 
 Para producción en Vercel, crea una base de datos gestionada (Vercel Postgres, Neon, Supabase, etc.) y añade `DATABASE_URL` en las variables de entorno del proyecto. El despliegue de Vercel ejecuta `npm run db:deploy` antes del build para aplicar las migraciones.
 
+También es obligatorio configurar `SESSION_SECRET` con un valor aleatorio de al menos 32 caracteres:
+
+```bash
+openssl rand -base64 48
+```
+
 Si necesitas aplicar las migraciones manualmente:
 
 ```bash
@@ -87,6 +94,9 @@ No uses SQLite en Vercel para este proyecto: las funciones serverless no tienen 
 | `npm run db:migrate` | Crea/aplica migraciones en desarrollo |
 | `npm run db:deploy` | Aplica migraciones en producción |
 | `npm run db:studio` | Abre Prisma Studio para explorar la base de datos |
+| `npm run test` | Ejecuta las pruebas automatizadas |
+| `npm run lint` | Revisa calidad y patrones inseguros |
+| `npm run check` | Ejecuta lint, pruebas, build y auditoría de dependencias |
 
 ## Flujo de uso
 
@@ -121,8 +131,18 @@ Restaurant
             └─ selections[] → dish
 ```
 
+## Seguridad y privacidad
+
+- El enlace público de votación no devuelve respuestas de otros invitados.
+- El seguimiento del organizador requiere un token privado separado.
+- Los PIN nuevos se guardan con bcrypt; los PIN antiguos se migran al iniciar sesión.
+- Los nombres se normalizan y son únicos por evento; el aforo se comprueba en una transacción serializable.
+- La información de alergias requiere consentimiento y se acompaña de una advertencia sanitaria.
+- Consulta [OPERACION_DEMO.md](./OPERACION_DEMO.md) antes de desplegar.
+
 ## Deuda técnica
 
 - **Alérgenos** — En el MVP se guardan como JSON serializado en campos `String @default("[]")` (`Dish.allergens` y `Guest.allergens`). Es suficiente para el piloto, pero más adelante conviene normalizarlo a tablas relacionales:
   - `DishAllergen` para los alérgenos presentes en cada plato.
   - `GuestAllergen` para las alergias declaradas por cada comensal.
+- **Identidad legal** — Antes de un piloto real deben sustituirse los contactos de demostración y completar responsable, encargado, proveedores, ubicación y plazos de conservación.

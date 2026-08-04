@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { verifyPin, getRestaurant } from "@/lib/actions/restaurant";
+import { verifyPin, getRestaurant, logoutRestaurant, deleteRestaurant } from "@/lib/actions/restaurant";
+import { deleteMenu, updateMenuDetails } from "@/lib/actions/menu";
 import {
   UtensilsCrossed,
   Plus,
@@ -22,6 +23,8 @@ import {
   Users,
   ChefHat,
   Lock,
+  Trash2,
+  Pencil,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -29,6 +32,7 @@ type RestaurantData = NonNullable<Awaited<ReturnType<typeof getRestaurant>>>;
 
 export default function RestaurantPanel() {
   const params = useParams();
+  const router = useRouter();
   const restaurantId = params.id as string;
 
   const [authenticated, setAuthenticated] = useState(false);
@@ -36,33 +40,22 @@ export default function RestaurantPanel() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [actionError, setActionError] = useState("");
 
   const loadRestaurant = useCallback(async () => {
     const data = await getRestaurant(restaurantId);
     if (data) {
       setRestaurant(data);
+      setAuthenticated(true);
     } else {
-      sessionStorage.removeItem(`pin_${restaurantId}`);
       setAuthenticated(false);
     }
     setLoading(false);
   }, [restaurantId]);
 
   useEffect(() => {
-    const storedPin = sessionStorage.getItem(`pin_${restaurantId}`);
-    if (storedPin) {
-      verifyPin(restaurantId, storedPin).then((result) => {
-        if (result.success) {
-          setAuthenticated(true);
-          loadRestaurant();
-        } else {
-          sessionStorage.removeItem(`pin_${restaurantId}`);
-          setLoading(false);
-        }
-      });
-    } else {
-      setLoading(false);
-    }
+    const timer = window.setTimeout(loadRestaurant, 0);
+    return () => window.clearTimeout(timer);
   }, [restaurantId, loadRestaurant]);
 
   const handlePinSubmit = async (e: React.FormEvent) => {
@@ -74,10 +67,48 @@ export default function RestaurantPanel() {
       setError(result.error);
       return;
     }
-    sessionStorage.setItem(`pin_${restaurantId}`, sanitizedPin);
     setAuthenticated(true);
     setLoading(true);
     loadRestaurant();
+  };
+
+  const handleLogout = async () => {
+    await logoutRestaurant();
+    setRestaurant(null);
+    setAuthenticated(false);
+    setPin("");
+  };
+
+  const handleDeleteMenu = async (menuId: string) => {
+    if (!window.confirm("¿Eliminar este menú? Solo es posible si no está asociado a eventos.")) return;
+    setActionError("");
+    const result = await deleteMenu(menuId, restaurantId);
+    if (result.error) setActionError(result.error);
+    else await loadRestaurant();
+  };
+
+  const handleRenameMenu = async (menu: RestaurantData["menus"][number]) => {
+    const name = window.prompt("Nombre del menú", menu.name);
+    if (name === null || name.trim() === menu.name) return;
+    setActionError("");
+    const result = await updateMenuDetails(menu.id, restaurantId, {
+      name,
+      description: menu.description ?? undefined,
+    });
+    if (result.error) setActionError(result.error);
+    else await loadRestaurant();
+  };
+
+  const handleDeleteRestaurant = async () => {
+    if (!restaurant) return;
+    const confirmation = window.prompt(
+      `Esta acción elimina permanentemente restaurante, menús, eventos y respuestas. Escribe exactamente: ${restaurant.name}`
+    );
+    if (confirmation === null) return;
+    setActionError("");
+    const result = await deleteRestaurant(restaurantId, confirmation);
+    if (result.error) setActionError(result.error);
+    else router.push("/");
   };
 
   if (loading) {
@@ -150,12 +181,19 @@ export default function RestaurantPanel() {
             <p className="text-sm text-muted-foreground">Panel de gestión</p>
           </div>
         </div>
-        <Link href="/">
-          <Button variant="ghost" size="sm">
-            Inicio
+        <div className="flex gap-2">
+          <Link href="/">
+            <Button variant="ghost" size="sm">Inicio</Button>
+          </Link>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
+            Cerrar sesión
           </Button>
-        </Link>
+        </div>
       </div>
+
+      {actionError && (
+        <p className="mb-4 text-sm font-medium text-destructive">{actionError}</p>
+      )}
 
       {/* Menus Section */}
       <div className="mb-8">
@@ -208,7 +246,25 @@ export default function RestaurantPanel() {
                         platos
                       </p>
                     </div>
-                    <Badge variant="outline">{menu.courses.length} tiempos</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{menu.courses.length} tiempos</Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Renombrar ${menu.name}`}
+                        onClick={() => handleRenameMenu(menu)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Eliminar ${menu.name}`}
+                        onClick={() => handleDeleteMenu(menu.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -309,6 +365,17 @@ export default function RestaurantPanel() {
             })}
           </div>
         )}
+      </div>
+
+      <Separator className="my-8" />
+      <div className="rounded-lg border border-destructive/30 p-4">
+        <h2 className="font-semibold">Eliminar cuenta y datos</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Borra permanentemente el restaurante, sus menús, eventos y respuestas de invitados.
+        </p>
+        <Button variant="destructive" size="sm" className="mt-3" onClick={handleDeleteRestaurant}>
+          <Trash2 className="mr-1 h-4 w-4" /> Eliminar restaurante
+        </Button>
       </div>
     </div>
   );

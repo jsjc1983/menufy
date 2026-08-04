@@ -8,12 +8,14 @@ datasource db {
 }
 
 model Restaurant {
-  id        String   @id @default(cuid())
-  name      String
-  adminPin  String
-  events    Event[]
-  menus     Menu[]
-  createdAt DateTime @default(now())
+  id                String    @id @default(cuid())
+  name              String
+  adminPin          String
+  failedPinAttempts Int       @default(0)
+  lockedUntil       DateTime?
+  events            Event[]
+  menus             Menu[]
+  createdAt         DateTime  @default(now())
 }
 
 model Menu {
@@ -54,6 +56,7 @@ model Event {
   date           DateTime
   guestCount     Int
   shareCode      String   @unique
+  organizerToken String   @unique @default(cuid())
   organizerName  String
   organizerEmail String?
   restaurant     Restaurant @relation(fields: [restaurantId], references: [id])
@@ -76,6 +79,8 @@ model Guest {
   eventId        String
   selections     Selection[]
   submittedAt    DateTime    @default(now())
+
+  @@unique([eventId, normalizedName])
 }
 
 model Selection {
