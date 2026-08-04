@@ -39,7 +39,7 @@ La propuesta de valor principal se puede enseñar de extremo a extremo: alta de 
 | Dashboard de producción | Demostrable | Incluye raciones compartidas y progreso |
 | Gestión manual de invitados | Demostrable | El restaurante puede añadir, editar y eliminar respuestas |
 | Exportación de resumen `.txt` | Demostrable | No exportar datos personales reales |
-| Vista de seguimiento del organizador | Demostrable con cautela | Contiene datos personales y actualmente depende solo del enlace público |
+| Vista de seguimiento del organizador | Demostrable con cautela | Contiene datos personales y requiere el enlace privado con token del organizador |
 
 ## Pendientes que dependen del despliegue o de una decisión empresarial
 
