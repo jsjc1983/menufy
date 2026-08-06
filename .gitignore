@@ -40,3 +40,4 @@ dev.db-journal
 
 # temp
 /temp_app
+.env*

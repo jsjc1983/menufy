@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -88,6 +88,6 @@ model Selection {
   id      String @id @default(cuid())
   guest   Guest  @relation(fields: [guestId], references: [id])
   guestId String
-  dish    Dish   @relation(fields: [dishId], references: [id])
+  dish    Dish  @relation(fields: [dishId], references: [id])
   dishId  String
 }

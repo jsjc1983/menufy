@@ -47,8 +47,6 @@ export default function NewRestaurantPage() {
     }
 
     if (result.restaurant) {
-      // Store PIN in sessionStorage
-      sessionStorage.setItem(`pin_${result.restaurant.id}`, pin);
       router.push(`/restaurant/${result.restaurant.id}`);
     }
   };

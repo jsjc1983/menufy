@@ -1,23 +1,52 @@
 import { cookies } from "next/headers";
-import { prisma } from "@/lib/db";
+import {
+  createSessionValue,
+  sessionTtlSeconds,
+  verifySessionValue,
+} from "@/lib/session";
 
-export async function verifyRestaurantPinValue(
-  restaurantId: string,
-  pin: string | undefined
-) {
-  if (!restaurantId || !pin || !/^\d{4,6}$/.test(pin)) {
-    return false;
+export const SESSION_COOKIE = "gruppy_restaurant_session";
+
+function sessionSecret(): string {
+  const configured = process.env.SESSION_SECRET;
+  if (configured && configured.length >= 32) return configured;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET debe tener al menos 32 caracteres");
   }
-
-  const restaurant = await prisma.restaurant.findUnique({
-    where: { id: restaurantId },
-    select: { adminPin: true },
-  });
-
-  return restaurant?.adminPin === pin;
+  return "gruppy-local-development-session-secret";
 }
 
-export function checkRestaurantSession(restaurantId: string): boolean {
-  const session = cookies().get("gruppy_restaurant_session");
-  return !!restaurantId && session?.value === restaurantId;
+export function assertSessionConfigured() {
+  sessionSecret();
+}
+
+export async function setRestaurantSession(restaurantId: string) {
+  const store = await cookies();
+  store.set(SESSION_COOKIE, createSessionValue(restaurantId, sessionSecret()), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: sessionTtlSeconds,
+  });
+}
+
+export async function clearRestaurantSession() {
+  const store = await cookies();
+  store.delete(SESSION_COOKIE);
+}
+
+export async function checkRestaurantSession(
+  restaurantId: string
+): Promise<boolean> {
+  try {
+    const store = await cookies();
+    return verifySessionValue(
+      store.get(SESSION_COOKIE)?.value,
+      restaurantId,
+      sessionSecret()
+    );
+  } catch {
+    return false;
+  }
 }
