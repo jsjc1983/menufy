@@ -57,6 +57,7 @@ model Event {
   guestCount     Int
   shareCode      String   @unique
   organizerToken String   @unique @default(cuid())
+  kitchenToken   String?  @unique
   organizerName  String
   organizerEmail String?
   restaurant     Restaurant @relation(fields: [restaurantId], references: [id])

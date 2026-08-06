@@ -62,8 +62,13 @@ function writeLocalEnv() {
 }
 
 function runPrisma(args, exitOnError = true) {
-  const executable = process.platform === "win32" ? "npx.cmd" : "npx";
-  const result = spawnSync(executable, ["prisma", ...args], {
+  const executable = join(
+    root,
+    "node_modules",
+    ".bin",
+    process.platform === "win32" ? "prisma.cmd" : "prisma"
+  );
+  const result = spawnSync(executable, args, {
     cwd: root,
     stdio: "inherit",
     env: process.env,

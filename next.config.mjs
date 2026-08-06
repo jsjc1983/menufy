@@ -8,6 +8,8 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  agentRules: false,
+  outputFileTracingRoot: process.cwd(),
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

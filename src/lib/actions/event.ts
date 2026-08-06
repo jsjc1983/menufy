@@ -5,7 +5,12 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { generateShareCode } from "@/lib/utils";
 import { checkRestaurantSession } from "@/lib/server-auth";
-import { organizerEventSelect, publicEventSelect } from "@/lib/event-selects";
+import {
+  kitchenEventSelect,
+  organizerEventSelect,
+  publicEventSelect,
+} from "@/lib/event-selects";
+import { buildKitchenEvent } from "@/lib/kitchen-event";
 
 function parseLocalDateInput(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -147,6 +152,7 @@ export async function createEvent(data: {
           guestCount: data.guestCount,
           shareCode: generateShareCode(),
           organizerToken: randomBytes(24).toString("base64url"),
+          kitchenToken: randomBytes(32).toString("base64url"),
           organizerName: data.organizerName.trim(),
           organizerEmail: data.organizerEmail?.trim() || null,
           restaurantId: data.restaurantId,
@@ -265,6 +271,53 @@ export async function getEventById(
       },
     },
   });
+}
+
+export async function getKitchenEvent(eventId: string, kitchenToken: string) {
+  if (
+    !/^[a-zA-Z0-9_-]{20,128}$/.test(eventId) ||
+    !/^[a-zA-Z0-9_-]{32,128}$/.test(kitchenToken)
+  ) {
+    return null;
+  }
+
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, kitchenToken },
+    select: kitchenEventSelect,
+  });
+
+  return event ? buildKitchenEvent(event) : null;
+}
+
+export async function getOrCreateKitchenToken(
+  eventId: string,
+  restaurantId: string
+) {
+  if (!(await checkRestaurantSession(restaurantId))) {
+    return { error: "No tienes permisos para compartir la vista de cocina" };
+  }
+
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, restaurantId },
+    select: { kitchenToken: true },
+  });
+  if (!event) return { error: "Evento no encontrado" };
+  if (event.kitchenToken) return { token: event.kitchenToken };
+
+  const token = randomBytes(32).toString("base64url");
+  const result = await prisma.event.updateMany({
+    where: { id: eventId, restaurantId, kitchenToken: null },
+    data: { kitchenToken: token },
+  });
+  if (result.count === 1) return { token };
+
+  const updated = await prisma.event.findFirst({
+    where: { id: eventId, restaurantId },
+    select: { kitchenToken: true },
+  });
+  return updated?.kitchenToken
+    ? { token: updated.kitchenToken }
+    : { error: "No se pudo crear el enlace de cocina" };
 }
 
 export async function closeEvent(

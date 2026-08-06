@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { getEventById, closeEvent, deleteEvent, reopenEvent, renameEvent } from "@/lib/actions/event";
+import { getEventById, closeEvent, deleteEvent, getOrCreateKitchenToken, reopenEvent, renameEvent } from "@/lib/actions/event";
 import {
   deleteGuest,
   updateGuestSelection,
@@ -76,6 +76,7 @@ export default function EventDashboard() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [copiedOrganizer, setCopiedOrganizer] = useState(false);
+  const [copiedKitchen, setCopiedKitchen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [actionError, setActionError] = useState("");
   const [guestFormOpen, setGuestFormOpen] = useState(false);
@@ -150,6 +151,18 @@ export default function EventDashboard() {
     await navigator.clipboard.writeText(link);
     setCopiedOrganizer(true);
     setTimeout(() => setCopiedOrganizer(false), 2000);
+  };
+
+  const copyKitchenLink = async () => {
+    const result = await getOrCreateKitchenToken(eventId, restaurantId);
+    if (result.error || !result.token) {
+      setActionError(result.error || "No se pudo crear el enlace de cocina");
+      return;
+    }
+    const link = `${window.location.origin}/kitchen/${eventId}?token=${encodeURIComponent(result.token)}`;
+    await navigator.clipboard.writeText(link);
+    setCopiedKitchen(true);
+    window.setTimeout(() => setCopiedKitchen(false), 2000);
   };
 
   const handleDeleteGuest = async (guestId: string) => {
@@ -313,6 +326,10 @@ export default function EventDashboard() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Button variant="default" size="sm" onClick={copyKitchenLink}>
+            {copiedKitchen ? <Check className="h-4 w-4 mr-1" /> : <ChefHat className="h-4 w-4 mr-1" />}
+            {copiedKitchen ? "Enlace copiado" : "Copiar enlace cocina"}
+          </Button>
           <Button variant="outline" size="sm" onClick={handleRenameEvent}>
             <Pencil className="h-4 w-4 mr-1" />
             Renombrar
@@ -530,34 +547,46 @@ export default function EventDashboard() {
                       return (
                         <div
                           key={guest.id}
-                          className="p-3 border rounded-md space-y-1"
+                          className="space-y-3 rounded-md border p-3"
                         >
-                          <div className="font-medium">{guest.name}</div>
-                          <div className="flex flex-wrap gap-1">
-                            {allergens.map((a) => {
-                              const allergen = getAllergenById(a);
-                              return (
-                                <Badge
-                                  key={a}
-                                  variant="warning"
-                                  className="text-xs"
-                                >
-                                  {allergen?.emoji} {allergen?.name || a}
-                                </Badge>
-                              );
-                            })}
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0 font-medium">{guest.name}</div>
+                            <div className="flex flex-wrap justify-end gap-1">
+                              {allergens.map((a) => {
+                                const allergen = getAllergenById(a);
+                                return (
+                                  <Badge
+                                    key={a}
+                                    variant="warning"
+                                    className="text-xs"
+                                  >
+                                    {allergen?.emoji} {allergen?.name || a}
+                                  </Badge>
+                                );
+                              })}
+                            </div>
                           </div>
                           {guest.allergyNotes && (
-                            <p className="text-sm text-muted-foreground">
-                              Notas: {guest.allergyNotes}
-                            </p>
+                            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                              <AlertTriangle
+                                className="mt-0.5 h-4 w-4 shrink-0 text-amber-700"
+                                aria-hidden="true"
+                              />
+                              <p>{guest.allergyNotes}</p>
+                            </div>
                           )}
-                          <div className="text-xs text-muted-foreground mt-1">
-                            Platos:{" "}
-                            {guest.selections
-                              .map((s) => s.dish.name)
-                              .join(", ")}
-                          </div>
+                          {guest.selections.length > 0 && (
+                            <ul className="flex flex-wrap gap-1.5">
+                              {guest.selections.map((selection) => (
+                                <li
+                                  key={selection.id}
+                                  className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground"
+                                >
+                                  {selection.dish.name}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </div>
                       );
                     })}
