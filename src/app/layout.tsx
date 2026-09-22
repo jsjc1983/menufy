@@ -8,6 +8,10 @@ export const metadata: Metadata = {
   title: "Gruppy | Menús de grupo listos para cocina",
   description:
     "El restaurante crea el menú, comparte un enlace y recibe elecciones y alérgenos ordenados para cocina. Sin apps ni registros para el grupo.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+  },
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -35,6 +39,15 @@ export default function RootLayout({
           <div className="flex justify-center gap-4">
             <a href="/privacidad" className="hover:text-foreground">Privacidad</a>
             <a href="/terminos" className="hover:text-foreground">Condiciones</a>
+            <a
+              href="https://www.instagram.com/gruppy.es/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-foreground"
+              aria-label="Instagram de Gruppy (se abre en una nueva pestaña)"
+            >
+              Instagram
+            </a>
             <a href="mailto:soporte@gruppy.app" className="hover:text-foreground">Soporte</a>
           </div>
         </footer>
