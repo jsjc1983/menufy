@@ -5,9 +5,9 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Gruppy - Gestiona menús de grupo sin complicaciones",
+  title: "Gruppy | Menús de grupo listos para cocina",
   description:
-    "Gruppy permite a restaurantes gestionar menús de grupo para eventos, y a los invitados elegir sus platos y declarar alérgenos sin registrarse.",
+    "El restaurante crea el menú, comparte un enlace y recibe elecciones y alérgenos ordenados para cocina. Sin apps ni registros para el grupo.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#d97706",
+  themeColor: "#28182c",
 };
 
 export default function RootLayout({
